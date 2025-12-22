@@ -1,67 +1,67 @@
 #!/bin/zsh
-# Gemini 调用封装脚本 - 适配 multi-ai-workflow-cli v2.0
-# 用途: 调用 Gemini CLI 进行代码审查，并生成审查报告
+# Gemini CLI wrapper script - Adapted for multi-ai-workflow-cli v2.0
+# Purpose: Call Gemini CLI for code review and generate review report
 #
-# 注意:
-# - 使用 zsh 以便加载用户的 gemini 函数配置
-# - 自动检测 gemini 是函数还是命令：
-#   * 如果是函数（定义在 ~/.zshrc）：使用函数调用（包含用户的代理配置等）
-#   * 如果是命令（系统安装的 CLI）：使用 command 调用
+# Notes:
+# - Uses zsh to load user's gemini function configuration
+# - Automatically detects if gemini is a function or command:
+#   * If it's a function (defined in ~/.zshrc): uses function call (includes user's proxy config, etc.)
+#   * If it's a command (system-installed CLI): uses command call
 
-set -e  # 遇到错误立即退出
+set -e  # Exit immediately on error
 
 PROMPT=$1
 PROJECT_DIR=$2
 
-# 参数验证
+# Parameter validation
 if [ -z "$PROMPT" ] || [ -z "$PROJECT_DIR" ]; then
-    echo "错误: 缺少必需参数"
-    echo "用法: $0 <提示词> <项目目录>"
+    echo "Error: Missing required parameters"
+    echo "Usage: $0 <prompt> <project_directory>"
     exit 1
 fi
 
-# 检查项目目录是否存在
+# Check if project directory exists
 if [ ! -d "$PROJECT_DIR" ]; then
-    echo "错误: 项目目录不存在: $PROJECT_DIR"
+    echo "Error: Project directory does not exist: $PROJECT_DIR"
     exit 1
 fi
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "开始调用 Gemini 进行代码审查..."
+echo "Starting Gemini code review..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "项目目录: $PROJECT_DIR"
+echo "Project directory: $PROJECT_DIR"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# 保存当前目录
+# Save current directory
 ORIGINAL_DIR=$(pwd)
 
-# 切换到项目目录
+# Change to project directory
 cd "$PROJECT_DIR" || exit 1
 
-# 禁用 set -e 以捕获退出码
+# Disable set -e to capture exit code
 set +e
 
-# 尝试加载 ~/.zshrc（如果用户在其中定义了 gemini 函数）
+# Try to load ~/.zshrc (if user defined gemini function there)
 if [ -f ~/.zshrc ]; then
     source ~/.zshrc 2>/dev/null || true
 fi
 
-# 检查 gemini 是否是 zsh 函数
+# Check if gemini is a zsh function
 if typeset -f gemini > /dev/null 2>&1; then
-    # gemini 是函数（用户在 ~/.zshrc 中定义，可能包含代理配置）
-    echo "调用 Gemini (使用 ~/.zshrc 中的函数)..."
+    # gemini is a function (user defined in ~/.zshrc, may include proxy config)
+    echo "Calling Gemini (using function from ~/.zshrc)..."
     gemini --yolo --output-format text "$PROMPT"
 else
-    # gemini 不是函数，作为普通命令调用
-    echo "调用 Gemini (使用系统命令)..."
+    # gemini is not a function, call as regular command
+    echo "Calling Gemini (using system command)..."
     command gemini --yolo --output-format text "$PROMPT"
 fi
 
-# 捕获退出码
+# Capture exit code
 EXIT_CODE=$?
 
-# 返回原始目录
+# Return to original directory
 cd "$ORIGINAL_DIR" || true
 
 set -e
@@ -70,26 +70,26 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "✓ Gemini 审查完成!"
+    echo "✓ Gemini review completed!"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     exit 0
 else
-    echo "✗ Gemini 执行失败! 错误码: $EXIT_CODE"
+    echo "✗ Gemini execution failed! Error code: $EXIT_CODE"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    echo "可能的原因:"
-    echo "1. Gemini CLI 未安装或不在 PATH 中"
-    echo "2. 网络连接问题（需要代理或 VPN）"
-    echo "3. API 密钥未配置"
-    echo "4. 提示词格式错误"
+    echo "Possible causes:"
+    echo "1. Gemini CLI not installed or not in PATH"
+    echo "2. Network connection issues (may need proxy or VPN)"
+    echo "3. API key not configured"
+    echo "4. Invalid prompt format"
     echo ""
-    echo "建议:"
-    echo "- 检查 Gemini 是否可用:"
-    echo "  * 如果是函数: 检查 ~/.zshrc 中的 gemini 函数定义"
-    echo "  * 如果是命令: which gemini"
-    echo "- 检查代理设置: echo \$HTTP_PROXY"
-    echo "- 检查网络连接: curl -I https://cloudcode-pa.googleapis.com"
-    echo "- 手动测试: gemini --yolo 'hello'"
-    echo "- 或使用 Claude: /workflow-start --step3=claude"
+    echo "Suggestions:"
+    echo "- Check if Gemini is available:"
+    echo "  * If it's a function: check gemini function definition in ~/.zshrc"
+    echo "  * If it's a command: which gemini"
+    echo "- Check proxy settings: echo \$HTTP_PROXY"
+    echo "- Check network connection: curl -I https://cloudcode-pa.googleapis.com"
+    echo "- Manual test: gemini --yolo 'hello'"
+    echo "- Or use Claude: /workflow-start --step3=claude"
     exit 1
 fi
