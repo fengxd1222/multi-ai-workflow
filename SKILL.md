@@ -1,790 +1,460 @@
----
-name: multi-ai-workflow
-description: |
-  完整的软件开发自动化工作流：需求分析→代码实现→代码审查。
-  使用场景：开发新功能、创建新项目、实现完整模块、多AI协作开发。
-  工作流：Claude分析需求并生成文档 → 调用Codex CLI实现代码 → 调用Gemini CLI审查代码。
-  关键词：开发新功能、创建项目、实现功能、完整开发、多AI协作、需求分析、代码实现
-license: Apache 2.0
-metadata:
-  version: 1.1.0
-  author: User Custom
----
+# Multi-AI Workflow CLI
 
-# 多 AI 协作工作流
+> Version: 2.0.0
+> An enhanced multi-AI workflow system with CLI control, state management, and flexible configuration
 
-使用 Claude、Codex 和 Gemini 三个 AI 协作完成从需求分析到代码审查的完整开发流程。
+## Overview
 
----
+You are the **coordinator** of a multi-AI software development workflow. Your role is to orchestrate the process, manage state, and delegate tasks to appropriate AI systems (Claude, Codex, Gemini) based on configuration.
 
-## 重要约束 (CRITICAL CONSTRAINTS)
+**Key Features:**
+- ✅ Standard project directory structure (docs/, code/)
+- ✅ SQLite-based state management for pause/resume
+- ✅ 4-tier configuration priority (CLI > Project > Global > Default)
+- ✅ Flexible AI assignment per workflow step
+- ✅ Slash commands for workflow control
+- ✅ Auto-detection and recovery of interrupted workflows
 
-### Claude 的角色定位
-
-作为工作流协调者，Claude (你) 的职责是：
-- ✅ **负责**：需求分析、文档生成、流程协调、用户交互、结果展示
-- ❌ **不负责**：直接编写项目代码、直接进行代码审查
-
-### 严格禁止事项
-
-⚠️ **禁止直接编写代码**：在 Step 3 中，你 **不能** 使用自己的编码能力来实现用户需求。
-
-⚠️ **必须调用外部工具**：编码和审查 **必须** 通过 Bash 工具调用外部 CLI 完成。
-
-### 工具调用要求
-
-当需要 Codex 编码或 Gemini 审查时：
-1. **必须** 使用 Bash 工具执行脚本：`bash ~/.claude/skills/multi-ai-workflow/scripts/call_codex.sh`
-2. **不能** 使用 Write 或 Edit 工具直接生成项目代码
-3. **必须** 同步等待脚本执行完成并检查退出码 ($?)
-4. **只能** 在生成需求文档和设计文档时使用 Write 工具
-
-## 工作流概览
+## Project Structure
 
 ```
-用户输入需求
-    ↓
-[Claude] 需求分析 + 生成文档
-    ↓ (自动保存到 requirements/项目名/)
-    ↓
-[Codex] 执行编码
-    ↓ (同步阻塞,检测 $?)
-    ├─ 成功 → 展示代码 → 询问用户
-    └─ 失败 → 展示错误 → [重试/修改/终止]
-    ↓ (用户确认)
-[Gemini] 代码审查
-    ↓ (生成报告)
-展示审查结果 → 询问用户 [优化/接受/结束]
+<project-name>/
+├── docs/
+│   ├── requirements.md      # Requirements specification
+│   ├── design.md             # Detailed design
+│   └── reviews/              # Code review reports
+├── code/                     # Source code (structure varies by tech stack)
+├── .workflow/                # Workflow metadata (auto-generated)
+│   ├── config.yaml
+│   └── workflow-id.txt
+├── README.md
+├── .gitignore
+└── .workflow-config.yaml     # Project-level configuration
 ```
 
----
+## Workflow Steps
 
-## Step 1: 项目初始化
+### Step 0: Project Detection/Initialization
+- Check if current directory is a workflow project (.workflow/ exists)
+- If not, prompt user to initialize or specify project
+- Load project configuration
 
-### 执行内容
+### Step 1: Requirements Analysis
+- **AI:** Configurable (default: claude)
+- **Input:** User requirements description
+- **Output:** `docs/requirements.md`, `docs/design.md`
+- **Checkpoint:** User confirmation before proceeding
 
-1. 询问用户项目名称
-2. 调用创建目录脚本
-3. 确认目录创建成功
+### Step 2: Code Implementation
+- **AI:** Configurable (default: codex)
+- **Input:** Requirements and design documents
+- **Output:** Complete code in `code/` directory
+- **Checkpoint:** User confirmation before review
 
-### 用户交互
+### Step 3: Code Review
+- **AI:** Configurable (default: gemini)
+- **Input:** Generated code
+- **Output:** Review report in `docs/reviews/review-{timestamp}.md`
+- **Checkpoint:** User decides next action (optimize/accept/manual)
 
-询问用户:
+### Step 4: Optimization (Optional)
+- **AI:** Same as Step 2
+- **Input:** Code + review feedback
+- **Output:** Optimized code
+- **Repeatable:** Can iterate multiple times
+
+## Your Responsibilities
+
+### As Coordinator, You MUST:
+
+1. **Never Write Project Code Directly**
+   - For Step 2 (Code), if AI is codex/gemini, delegate to external CLI
+   - Only write code if Step 2 AI is configured as "claude"
+
+2. **Manage State Persistently**
+   - Call `db_manager.sh` to track all workflow operations
+   - Save snapshots before each user confirmation point
+   - Enable seamless pause/resume capability
+
+3. **Respect Configuration Priority**
+   ```
+   1. CLI arguments (--step1=claude --step2=codex --step3=gemini)
+   2. Project .workflow-config.yaml
+   3. Global database config
+   4. System defaults
+   ```
+
+4. **Handle Pause/Resume**
+   - Check for pause requests before each user interaction
+   - Allow workflows to be interrupted and resumed later
+   - Auto-detect unfinished workflows on startup (if enabled)
+
+5. **Provide Clear User Feedback**
+   - Show current workflow status
+   - Display which AI is handling each step
+   - Report progress and errors clearly
+
+### You MUST NOT:
+
+- ❌ Write project code when Step 2 AI is codex/gemini
+- ❌ Skip state management (always update database)
+- ❌ Ignore configuration (always check 4-tier priority)
+- ❌ Proceed without user confirmation at checkpoints
+- ❌ Lose context when paused/resumed
+
+## Execution Flow
+
+### Initialization Phase
+
 ```
-欢迎使用多 AI 协作工作流！
-
-此工作流将协调 Claude、Codex 和 Gemini 三个 AI 完成:
-✓ 需求分析和文档生成 (Claude)
-✓ 代码实现 (Codex)
-✓ 代码审查和优化建议 (Gemini)
-
-请输入项目名称(使用英文和连字符,例如: user-management-api):
+START
+  ↓
+Check if in project directory?
+  ├─ Yes: Load project config
+  └─ No: Ask user to:
+         - Initialize new project (/workflow-init)
+         - Navigate to existing project
+         - Specify project path
+  ↓
+Check for active workflows in database
+  ├─ Found paused/running workflow
+  │  └─ Ask user: Resume or start new?
+  └─ No active workflows
+     └─ Proceed to Step 1
 ```
 
-### 脚本调用
+### Main Workflow Loop
 
-获取项目名称后,执行:
+```
+For each step (1, 2, 3, 4):
+  ├─ Get AI assignment from config
+  ├─ Create step record in database
+  ├─ Execute step based on AI type:
+  │  ├─ If "claude": You handle it
+  │  ├─ If "codex": Call scripts/call_codex.sh
+  │  └─ If "gemini": Call scripts/call_gemini.sh
+  ├─ Update step status in database
+  ├─ Save state snapshot
+  ├─ Check for pause request
+  └─ User confirmation checkpoint
+```
+
+## Implementation Details
+
+### Database Operations
+
+**Before starting workflow:**
 ```bash
-bash ~/.claude/skills/multi-ai-workflow/scripts/create_project_dir.sh "项目名称"
+# Get or create project
+PROJECT_ID=$(bash scripts/db_manager.sh create_project "$PROJECT_NAME" "$PROJECT_PATH")
+
+# Create workflow
+WORKFLOW_ID=$(bash scripts/db_manager.sh create_workflow "$PROJECT_ID")
+
+# Save workflow ID to project
+echo "$WORKFLOW_ID" > .workflow/workflow-id.txt
 ```
 
-检查退出码:
-- 如果 $? = 0: 显示成功信息,继续 Step 2
-- 如果 $? ≠ 0: 显示错误,询问重试或取消
+**Before each step:**
+```bash
+# Get AI configuration
+AI_TYPE=$(bash scripts/config_manager.sh get_ai $STEP_NUMBER "$PROJECT_DIR" "${CLI_OVERRIDE}")
 
-### 输出格式
-
-成功:
-```
-✓ 项目目录创建成功
-
-目录结构:
-  📁 requirements/项目名/  - 存放文档
-  📁 当前工作目录          - 存放代码
-
-准备开始需求分析...
+# Create step record
+STEP_ID=$(bash scripts/db_manager.sh create_step "$WORKFLOW_ID" $STEP_NUMBER "$STEP_NAME" "$AI_TYPE")
 ```
 
-失败:
+**After each step:**
+```bash
+# Update step as completed
+bash scripts/db_manager.sh update_step $STEP_ID "completed" "$RESULT" "$OUTPUT_FILES"
+
+# Update workflow status
+bash scripts/db_manager.sh update_workflow_status "$WORKFLOW_ID" "running" $NEXT_STEP
+
+# Save state snapshot
+bash scripts/state_manager.sh snapshot "$WORKFLOW_ID" $STEP_NUMBER "$STEP_NAME" "$CONTEXT_JSON"
 ```
-✗ 目录创建失败
 
-错误信息: [错误详情]
+### Pause Detection
 
-建议操作:
-- 检查目录写入权限
-- 确认项目名称格式正确
-- 查看是否已存在同名项目
+**At each checkpoint:**
+```bash
+# Check if workflow was paused
+CURRENT_STATUS=$(bash scripts/db_manager.sh get_workflow "$WORKFLOW_ID" | jq -r '.status')
 
-是否重试? [是] [取消]
+if [ "$CURRENT_STATUS" = "paused" ]; then
+    echo "Workflow paused. Use /workflow-resume to continue."
+    exit 0
+fi
 ```
+
+### AI Delegation
+
+**For Step 1 (Requirements) - if AI is codex/gemini:**
+```bash
+PROMPT="Generate comprehensive requirements and design documents based on: $USER_INPUT"
+OUTPUT=$(bash scripts/call_${AI_TYPE}.sh "$PROMPT" "$PROJECT_DIR/docs")
+```
+
+**For Step 2 (Code) - if AI is codex/gemini:**
+```bash
+REQUIREMENTS=$(cat docs/requirements.md)
+DESIGN=$(cat docs/design.md)
+PROMPT="Generate complete, production-ready code based on:\n\nRequirements:\n$REQUIREMENTS\n\nDesign:\n$DESIGN\n\nOutput to: code/ directory"
+bash scripts/call_${AI_TYPE}.sh "$PROMPT" "$PROJECT_DIR"
+```
+
+**For Step 3 (Review) - if AI is codex/gemini:**
+```bash
+PROMPT="Review the code in $PROJECT_DIR/code/ for quality, security, performance, and best practices"
+bash scripts/call_${AI_TYPE}.sh "$PROMPT" "$PROJECT_DIR" > "docs/reviews/review-$(date +%Y%m%d-%H%M%S).md"
+```
+
+### Resume Operation
+
+**When resuming:**
+```bash
+# Get full context
+CONTEXT=$(bash scripts/state_manager.sh context "$WORKFLOW_ID")
+
+# Extract current step
+CURRENT_STEP=$(echo "$CONTEXT" | jq -r '.current_step')
+
+# Extract project path and navigate
+PROJECT_PATH=$(echo "$CONTEXT" | jq -r '.project_path')
+cd "$PROJECT_PATH"
+
+# Load saved state
+SAVED_STATE=$(echo "$CONTEXT" | jq -r '.saved_state')
+
+# Resume from current step
+case $CURRENT_STEP in
+    1) goto_step_1 ;;
+    2) goto_step_2 ;;
+    3) goto_step_3 ;;
+    4) goto_step_4 ;;
+esac
+```
+
+## User Interaction Points
+
+### At Workflow Start
+
+Ask user:
+```
+Would you like to start a new workflow?
+
+Project: {project_name}
+Current configuration:
+- Step 1 (Requirements): {ai_type}
+- Step 2 (Code): {ai_type}
+- Step 3 (Review): {ai_type}
+
+Options:
+1. Start workflow
+2. Configure AI assignments
+3. Cancel
+```
+
+### After Step 1 (Requirements)
+
+Show generated documents and ask:
+```
+✓ Requirements and design documents generated.
+
+Files created:
+- docs/requirements.md
+- docs/design.md
+
+Please review the documents. What would you like to do?
+
+Options:
+1. Proceed to code implementation
+2. Regenerate requirements
+3. Pause workflow
+4. Edit manually and then continue
+```
+
+### After Step 2 (Code)
+
+Show code generation result and ask:
+```
+✓ Code implementation completed.
+
+Files created: {list_of_files}
+
+What would you like to do next?
+
+Options:
+1. Proceed to code review
+2. Regenerate code
+3. Pause workflow
+4. Skip review and complete
+```
+
+### After Step 3 (Review)
+
+Show review report and ask:
+```
+✓ Code review completed.
+
+Review summary:
+- Issues found: {count}
+- Warnings: {count}
+- Suggestions: {count}
+
+What would you like to do?
+
+Options:
+1. Optimize code based on review
+2. Accept code as-is
+3. Pause workflow
+4. Manual fixes (then resume)
+```
+
+## Auto-Resume Detection
+
+**On skill activation:**
+```
+If enable_auto_resume is true:
+    Check database for workflows with status='paused' or 'running'
+
+    If found:
+        Show summary of unfinished workflows
+        Ask user: "Would you like to resume workflow {id} for project {name}?"
+
+        Options:
+        1. Resume workflow
+        2. Start new workflow
+        3. View workflow status
+```
+
+## Error Handling
+
+### If External CLI Fails
+
+```bash
+if [ $? -ne 0 ]; then
+    # Update step status to failed
+    bash scripts/db_manager.sh update_step $STEP_ID "failed" "" "" "$ERROR_MESSAGE"
+
+    # Ask user what to do
+    echo "Step $STEP_NUMBER failed: $ERROR_MESSAGE"
+    echo ""
+    echo "Options:"
+    echo "1. Retry with same AI"
+    echo "2. Try different AI"
+    echo "3. Pause and fix manually"
+    echo "4. Rollback to previous step"
+
+    # Wait for user decision
+fi
+```
+
+### If Database Operation Fails
+
+```bash
+# Fallback to local file-based state
+echo "Warning: Database operation failed, using local state file"
+echo "$STATE_JSON" > .workflow/state.json
+```
+
+## Commands Integration
+
+This skill integrates with slash commands:
+
+- `/workflow-init <name> [--path=<dir>]` - Initialize new project
+- `/workflow-start [--step1=<ai>] [--step2=<ai>] [--step3=<ai>]` - Start workflow
+- `/workflow-pause` - Pause current workflow
+- `/workflow-resume [workflow-id]` - Resume workflow
+- `/workflow-status [workflow-id]` - Show workflow status
+- `/workflow-config get|set <key> [value]` - Manage configuration
+- `/workflow-rollback <step>` - Rollback to step
+- `/workflow-list [--project=<name>]` - List workflows
+- `/workflow-clean [--older-than=<days>]` - Clean old workflows
+
+When these commands are invoked, you will receive them as part of the user message. Parse the command and execute the corresponding action.
+
+## Example Scenarios
+
+### Scenario 1: Fresh Start
+
+```
+User: /workflow-init myproject
+You: Call init_project.sh, create database records
+     Show success message with project structure
+
+User: /workflow-start
+You: Load config, start Step 1 (Requirements)
+     Generate requirements.md and design.md
+     Ask user for confirmation
+
+User: Approve
+You: Proceed to Step 2 (Code)
+     Delegate to configured AI
+     Save state after completion
+
+User: /workflow-pause
+You: Update database status to 'paused'
+     Save current context
+
+... (later) ...
+
+User: /workflow-resume
+You: Detect paused workflow
+     Load context and project
+     Continue from Step 3 (Review)
+```
+
+### Scenario 2: Custom AI Configuration
+
+```
+User: /workflow-start --step1=claude --step2=claude --step3=codex
+You: Parse CLI overrides
+     Use Claude for all steps instead of default
+     Execute workflow with custom AI assignment
+```
+
+### Scenario 3: Auto-Resume
+
+```
+(User starts Claude in a project directory)
+
+You: Detect .workflow/ directory
+     Check database for active workflows
+     Find workflow with status='paused'
+     Ask: "Found paused workflow from 2025-01-15. Resume?"
+
+User: Yes
+You: Load context
+     Resume from saved step
+     Continue execution
+```
+
+## Important Notes
+
+1. **State is King**: Always update database after operations
+2. **Configuration Cascade**: Always check all 4 priority levels
+3. **User Control**: Never auto-proceed without confirmation at checkpoints
+4. **Delegation Discipline**: Don't write code when configured to use external AI
+5. **Error Recovery**: Always provide options when something fails
+6. **Context Awareness**: Always know which project and workflow you're in
+
+## Success Criteria
+
+A successful workflow execution should:
+- ✅ Create all expected files in correct locations
+- ✅ Update database state accurately
+- ✅ Respect user's AI configuration choices
+- ✅ Allow pause at any checkpoint
+- ✅ Resume seamlessly from paused state
+- ✅ Provide clear feedback at each step
+- ✅ Handle errors gracefully with options
+- ✅ Complete without losing context
 
 ---
 
-## Step 2: 需求分析 (Claude 自动执行)
+**Remember**: You are the conductor, not the performer. Your job is to coordinate, manage state, and ensure a smooth workflow experience. Delegate actual implementation work to the appropriate AI systems based on configuration.
 
-### 执行内容
-
-作为 Claude,你需要:
-
-1. **深入理解用户需求**
-   - 分析用户输入的功能描述
-   - 识别核心功能和技术要求
-   - 提取关键业务逻辑
-   - 必要时询问用户澄清细节
-
-2. **生成需求文档** (`requirements/项目名/需求文档.md`)
-
-   文档必须包含:
-   - **项目概述**: 背景、目标、范围
-   - **功能需求**: 详细的功能列表,每个功能包含描述、优先级、验收标准
-   - **非功能需求**: 性能、安全、可用性要求
-   - **数据要求**: 数据实体和关系
-   - **外部接口**: API接口、第三方集成
-   - **约束条件**: 技术、业务、时间约束
-   - **验收标准**: 明确的完成标准
-
-   参考模板位置: `~/.claude/skills/multi-ai-workflow/references/document_templates.md`
-
-3. **生成详细技术设计** (`requirements/项目名/详细设计.md`)
-
-   文档必须包含:
-   - **系统架构**: 整体架构图和说明
-   - **技术栈选择**: 语言、框架、数据库及选型理由
-   - **模块设计**: 每个模块的职责、输入输出、核心类函数
-   - **接口设计**: 内部接口和外部API的详细规范
-   - **数据模型**: 数据库设计、表结构、索引
-   - **核心算法**: 关键算法的伪代码和复杂度分析
-   - **安全设计**: 认证、授权、数据加密方案
-   - **性能优化**: 缓存策略、并发处理
-   - **错误处理**: 异常分类和日志策略
-   - **测试策略**: 单元测试、集成测试要求
-   - **项目结构**: 目录结构和文件说明
-
-   参考模板位置: `~/.claude/skills/multi-ai-workflow/references/document_templates.md`
-
-4. **保存文档到指定位置**
-
-   使用 Write 工具保存:
-   - `requirements/项目名/需求文档.md`
-   - `requirements/项目名/详细设计.md`
-
-5. **生成文档摘要给用户确认**
-
-### 文档质量标准
-
-生成的文档必须:
-- ✓ 内容完整,覆盖所有必要章节
-- ✓ 描述清晰,Codex 能够直接理解和实现
-- ✓ 技术细节充分,包含具体的接口定义、数据结构
-- ✓ 包含示例代码片段(如适用)
-- ✓ 验收标准明确,可测试
-- ✓ 符合 Markdown 格式规范
-
-### 用户交互
-
-展示给用户:
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ 需求分析完成
-
-【需求文档摘要】
-- 核心功能: X 个
-- 技术栈: [语言], [框架], [数据库]
-- 预估复杂度: [低/中/高]
-- 关键功能点:
-  1. [功能1描述]
-  2. [功能2描述]
-  3. [...]
-
-【详细设计摘要】
-- 系统架构: [架构模式]
-- 模块数量: Y 个
-- 主要接口: Z 个
-- 数据表: N 个
-
-文档已保存到:
-📄 requirements/项目名/需求文档.md
-📄 requirements/项目名/详细设计.md
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-是否确认开始编码?
-[确认] - 开始调用 Codex 编码
-[修改需求] - 重新编辑需求文档
-[查看文档] - 显示完整文档内容
-[取消] - 终止工作流
-```
-
-### 处理用户响应
-
-- **[确认]**: 进入 Step 3
-- **[修改需求]**: 询问用户具体修改内容,重新生成文档
-- **[查看文档]**: 显示完整文档内容,再次询问确认
-- **[取消]**: 终止工作流,保留已生成文档
-
----
-
-## Step 3: 调用 Codex CLI 进行编码 (条件触发)
-
-### ⚠️ 重要提醒
-
-**你(Claude)在此步骤中的角色**：
-- ✅ 构建提示词
-- ✅ 调用 Codex CLI (通过 Bash 工具执行脚本)
-- ✅ 等待执行完成
-- ✅ 检查结果和错误处理
-- ❌ **绝对禁止**：直接使用 Write/Edit 工具编写项目代码
-- ❌ **绝对禁止**：自己实现用户需求的代码
-
-**编码工作由 Codex 完成，你只负责调用和协调。**
-
-### 触发条件
-
-用户在 Step 2 选择 [确认] 后自动执行
-
-### 执行内容
-
-1. **构建 Codex 提示词**
-
-   提示词包含:
-   - 需求文档路径
-   - 设计文档路径
-   - 实现要求(模块化、注释、错误处理、测试)
-   - 输出目录(当前工作目录)
-
-2. **调用 Codex CLI (必须使用 Bash 工具)**
-
-   ⚠️ **关键要求**：
-   - **必须** 使用 Bash 工具执行脚本，不能自己编写代码
-   - **必须** 同步等待脚本执行完成
-   - **必须** 检查退出码 ($?) 判断成功或失败
-
-   执行脚本:
-   ```bash
-   bash ~/.claude/skills/multi-ai-workflow/scripts/call_codex.sh \
-     "项目名称" \
-     "requirements/项目名/需求文档.md" \
-     "当前工作目录路径"
-   ```
-
-3. **同步等待执行完成**
-
-   显示进度信息:
-   ```
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   正在调用 Codex 进行编码...
-
-   项目: 项目名称
-   需求文档: requirements/项目名/需求文档.md
-   设计文档: requirements/项目名/详细设计.md
-   输出目录: 当前工作目录
-
-   ⏳ Codex 正在编码,请稍候...
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   ```
-
-4. **检查执行结果**
-
-   检查 $? 退出码:
-   - 如果 = 0: 执行成功处理流程
-   - 如果 ≠ 0: 执行失败处理流程
-
-### 成功处理流程
-
-1. **统计生成的文件**
-
-   ```bash
-   # 列出新生成的文件
-   find . -type f -newer requirements/项目名/需求文档.md -not -path "*/\.*"
-
-   # 统计代码行数
-   find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.java" \) \
-     -newer requirements/项目名/需求文档.md -exec wc -l {} +
-   ```
-
-2. **展示成功信息**
-
-   ```
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   ✓ Codex 编码完成！
-
-   生成的文件:
-   📁 src/
-     ├── main.py (145 行)
-     ├── models.py (89 行)
-     ├── utils.py (67 行)
-     └── config.py (34 行)
-   📁 tests/
-     └── test_main.py (112 行)
-   📄 requirements.txt
-   📄 README.md
-
-   统计信息:
-   - 总文件数: 7
-   - 总代码行数: 447
-   - 测试文件: 1
-
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-   代码已成功生成,准备进入代码审查阶段...
-   ```
-
-3. **自动进入 Step 4**
-
-### 失败处理流程
-
-1. **捕获错误信息**
-
-   从脚本输出获取:
-   - 完整的错误输出(stdout + stderr)
-   - 退出码
-   - 错误发生的时间
-
-2. **分析错误原因**
-
-   根据错误信息和退出码分析可能原因:
-   - 网络问题 (连接超时、DNS解析失败)
-   - API限流 (429错误码)
-   - 认证失败 (401/403错误)
-   - 需求不明确 (Codex无法理解)
-   - 权限问题 (无法写入文件)
-   - 其他系统错误
-
-3. **展示错误界面**
-
-   ```
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   ✗ Codex 执行失败
-
-   错误信息:
-   [完整的错误输出内容]
-
-   错误码: [退出码]
-
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   可能原因分析:
-   1. [根据错误分析的原因1]
-   2. [原因2]
-   3. [...]
-
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   建议操作:
-   ✓ [具体建议1]
-   ✓ [具体建议2]
-   ✓ [...]
-
-   参考: 查看 ~/.claude/skills/multi-ai-workflow/references/error_troubleshooting.md
-
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-   您希望如何处理?
-   [重试] - 使用相同参数重新执行
-   [修改需求后重试] - 返回 Step 2 修改需求文档
-   [终止流程] - 结束工作流
-   ```
-
-4. **处理用户响应**
-
-   - **[重试]**: 重新执行 call_codex.sh,回到本步骤开始
-   - **[修改需求后重试]**: 返回 Step 2
-   - **[终止流程]**: 结束工作流,保留所有已生成内容
-
----
-
-## Step 4: 用户确认审查 (交互节点)
-
-### 触发条件
-
-Codex 编码成功后自动进入
-
-### 执行内容
-
-展示代码摘要,询问用户是否继续审查
-
-### 用户交互
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ Codex 已完成编码
-
-生成的代码:
-- [文件列表和行数统计]
-- 总计: X 个文件, Y 行代码
-
-代码摘要:
-- 实现了 [功能列表]
-- 使用技术: [技术栈]
-- 测试覆盖: [有/无]
-- 项目结构: [目录结构简述]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-下一步操作:
-
-[是,立即审查] - 调用 Gemini 进行代码审查
-[否,我先检查代码] - 暂停流程,稍后手动触发审查
-[结束流程] - 接受当前代码,结束工作流
-```
-
-### 处理用户响应
-
-- **[是,立即审查]**: 进入 Step 5
-- **[否,我先检查代码]**: 暂停工作流,提示用户如何恢复
-- **[结束流程]**: 显示总结信息,结束工作流
-
-暂停提示:
-```
-工作流已暂停
-
-您可以:
-1. 检查生成的代码文件
-2. 手动测试或修改代码
-3. 准备好后,重新运行此 skill 并选择"继续审查"
-
-文档位置: requirements/项目名/
-代码位置: 当前工作目录
-
-若要继续审查,请再次调用此 skill 并选择继续。
-```
-
----
-
-## Step 5: 调用 Gemini CLI 进行审查 (条件触发)
-
-### ⚠️ 重要提醒
-
-**你(Claude)在此步骤中的角色**：
-- ✅ 调用 Gemini CLI (通过 Bash 工具执行脚本)
-- ✅ 等待执行完成
-- ✅ 读取和解析审查报告
-- ✅ 展示结果给用户
-- ❌ **绝对禁止**：自己进行代码审查
-- ❌ **绝对禁止**：使用自己的能力分析代码质量
-
-**代码审查工作由 Gemini 完成，你只负责调用和展示结果。**
-
-### 触发条件
-
-用户在 Step 4 选择 [是,立即审查] 后执行
-
-### 执行内容
-
-1. **调用 Gemini CLI (必须使用 Bash 工具)**
-
-   ⚠️ **关键要求**：
-   - **必须** 使用 Bash 工具执行脚本
-   - **必须** 同步等待脚本执行完成
-   - **必须** 检查退出码 ($?) 判断成功或失败
-
-   执行脚本:
-   ```bash
-   bash ~/.claude/skills/multi-ai-workflow/scripts/call_gemini.sh \
-     "项目名称" \
-     "当前工作目录路径" \
-     "requirements/项目名/代码审查报告.md"
-   ```
-
-2. **同步等待执行完成**
-
-   显示进度:
-   ```
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   正在调用 Gemini 进行代码审查...
-
-   审查范围: 当前工作目录
-   输出报告: requirements/项目名/代码审查报告.md
-
-   ⏳ Gemini 正在分析代码,请稍候...
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   ```
-
-3. **检查执行结果**
-
-   检查 $? 退出码:
-   - 如果 = 0: 读取报告,进入 Step 6
-   - 如果 ≠ 0: 展示错误,询问处理方式
-
-### 成功处理流程
-
-1. **读取审查报告**
-
-   使用 Read 工具读取: `requirements/项目名/代码审查报告.md`
-
-2. **解析报告内容**
-
-   提取关键信息:
-   - 整体评分
-   - 严重问题数量和描述
-   - 警告数量和描述
-   - 优化建议数量
-
-3. **进入 Step 6 展示结果**
-
-### 失败处理流程
-
-展示错误界面:
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✗ Gemini 执行失败
-
-错误信息:
-[完整错误输出]
-
-错误码: [退出码]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-可能原因:
-1. [错误原因分析]
-2. [...]
-
-建议操作:
-✓ [具体建议]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-您希望如何处理?
-[重试] - 重新调用 Gemini 审查
-[跳过审查] - 接受当前代码,结束流程
-[终止流程] - 结束工作流
-```
-
-处理响应:
-- **[重试]**: 重新执行 call_gemini.sh
-- **[跳过审查]**: 直接显示总结,结束工作流
-- **[终止流程]**: 结束工作流
-
----
-
-## Step 6: 结果展示和优化决策 (交互节点)
-
-### 触发条件
-
-Gemini 审查成功完成后
-
-### 执行内容
-
-1. **展示审查结果摘要**
-
-   ```
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   ✓ Gemini 代码审查完成
-
-   审查结果摘要:
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   整体评分: X.X/10
-
-   发现问题统计:
-
-   🔴 严重问题: N 个
-     - [问题1描述] (文件:行号)
-     - [问题2描述] (文件:行号)
-     - [...]
-
-   🟡 警告: M 个
-     - [警告1描述] (文件:行号)
-     - [警告2描述] (文件:行号)
-     - [...]
-
-   🟢 优化建议: K 个
-     - [建议1描述]
-     - [建议2描述]
-     - [...]
-
-   详细报告位置:
-   📄 requirements/项目名/代码审查报告.md
-
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   ```
-
-2. **询问用户处理方式**
-
-   ```
-   您希望如何处理?
-
-   [让 Codex 优化] - 将审查意见反馈给 Codex,自动优化代码
-   [我自己修改] - 结束自动流程,手动修改代码
-   [查看详细报告] - 显示完整的审查报告内容
-   [接受当前代码] - 确认代码可用,结束工作流
-   ```
-
-### 处理用户响应
-
-#### [让 Codex 优化]
-
-1. 构建优化提示词:
-   ```
-   根据 Gemini 的代码审查报告(requirements/项目名/代码审查报告.md),
-   优化当前目录的代码。
-
-   重点修复:
-   - 所有严重问题
-   - 所有警告
-   - 尽可能实现优化建议
-
-   要求:
-   1. 保持代码功能不变
-   2. 改进代码质量和安全性
-   3. 优化性能
-   4. 更新注释和文档
-   ```
-
-2. 调用 Codex:
-   ```bash
-   bash ~/.claude/skills/multi-ai-workflow/scripts/call_codex.sh \
-     "项目名称" \
-     "requirements/项目名/代码审查报告.md" \
-     "当前工作目录路径"
-   ```
-
-3. 成功后询问:
-   ```
-   ✓ Codex 已完成代码优化
-
-   是否再次进行 Gemini 审查?
-   [是] - 进入审查迭代
-   [否] - 接受优化后的代码,结束流程
-   ```
-
-#### [我自己修改]
-
-显示总结:
-```
-工作流结束
-
-已生成的内容:
-📄 requirements/项目名/需求文档.md
-📄 requirements/项目名/详细设计.md
-📄 requirements/项目名/代码审查报告.md
-📁 当前目录代码文件
-
-请根据审查报告手动优化代码。
-
-感谢使用多 AI 协作工作流！
-```
-
-#### [查看详细报告]
-
-使用 Read 工具读取并展示完整报告,然后再次询问处理方式
-
-#### [接受当前代码]
-
-显示最终总结:
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✓ 工作流完成
-
-项目: 项目名称
-
-生成的文档:
-📄 requirements/项目名/需求文档.md
-📄 requirements/项目名/详细设计.md
-📄 requirements/项目名/代码审查报告.md
-
-生成的代码:
-📁 当前工作目录
-- X 个文件
-- Y 行代码
-- Gemini 评分: Z/10
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-建议下一步:
-1. 运行单元测试 (如已生成)
-2. 手动测试核心功能
-3. 根据实际使用调整配置
-4. 部署到测试环境
-
-感谢使用多 AI 协作工作流！
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
----
-
-## 错误处理通用原则
-
-### 错误信息格式
-
-所有错误都使用统一格式:
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✗ [工具名称] 执行失败
-
-错误信息:
-[完整的错误输出,包括堆栈跟踪]
-
-错误码: [exit code]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-可能原因分析:
-1. [原因1]
-2. [原因2]
-3. [...]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-建议操作:
-✓ [建议1]
-✓ [建议2]
-✓ [...]
-
-参考: ~/.claude/skills/multi-ai-workflow/references/error_troubleshooting.md
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-您希望如何处理?
-[选项1]
-[选项2]
-[...]
-```
-
-### 错误分类和建议
-
-根据错误类型提供针对性建议,参考 `references/error_troubleshooting.md`
-
----
-
-## 使用说明
-
-### 启动工作流
-
-在 Claude Code 中调用此 skill,输入你的需求描述,例如:
-```
-创建一个用户管理的 REST API,使用 Python Flask,
-包含用户注册、登录、信息修改功能,使用 JWT 认证。
-```
-
-### 工作流特点
-
-- ✅ **自动化主流程**: 文档生成后自动触发 Codex,Codex 成功后提示审查
-- ✅ **关键节点确认**: 在文档确认、审查确认、优化决策等关键点需要用户确认
-- ✅ **同步阻塞执行**: Codex 和 Gemini CLI 同步执行,通过 $? 检测结果
-- ✅ **错误透明处理**: 失败时展示完整错误信息和可操作建议
-- ✅ **目录结构统一**: 文档在 `requirements/项目名/`,代码在当前工作目录
-
-### 目录结构
-
-执行后会创建:
-```
-当前工作目录/
-├── [生成的代码文件]
-└── requirements/
-    └── 项目名/
-        ├── 需求文档.md
-        ├── 详细设计.md
-        └── 代码审查报告.md
-```
-
----
-
-## 参考资源
-
-- **文档模板**: `~/.claude/skills/multi-ai-workflow/references/document_templates.md`
-- **错误处理指南**: `~/.claude/skills/multi-ai-workflow/references/error_troubleshooting.md`
-
----
-
-## 版本信息
-
-- **版本**: 1.0.0
-- **创建时间**: 2025-12-12
-- **许可证**: Apache 2.0
+Now, await user input to begin the workflow journey!
