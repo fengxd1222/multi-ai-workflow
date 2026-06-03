@@ -1,7 +1,9 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 )
 
@@ -50,8 +52,29 @@ func (c Codex) Run(ctx context.Context, req Request) (Result, error) {
 		Stderr:           pr.Stderr,
 		FinalJSON:        final,
 		FinalJSONOK:      completeJSON(final),
+		ReportedTokens:   codexUsage(pr.Stdout),
 		KilledByWatchdog: pr.Killed,
 	}, nil
+}
+
+// codexUsage extracts token usage from the last turn.completed event in the
+// codex JSONL event stream (calibrated against codex-cli 0.135.0).
+func codexUsage(stdout []byte) *int {
+	var tokens *int
+	for _, line := range bytes.Split(stdout, []byte("\n")) {
+		var ev struct {
+			Type  string `json:"type"`
+			Usage *struct {
+				InputTokens  int `json:"input_tokens"`
+				OutputTokens int `json:"output_tokens"`
+			} `json:"usage"`
+		}
+		if json.Unmarshal(line, &ev) == nil && ev.Type == "turn.completed" && ev.Usage != nil {
+			t := ev.Usage.InputTokens + ev.Usage.OutputTokens
+			tokens = &t
+		}
+	}
+	return tokens
 }
 
 // Claude runs jobs via the claude CLI. The business result is the stdout JSON
@@ -78,6 +101,19 @@ func claudeArgs(req Request, schemaContent string) []string {
 	return args
 }
 
+// claudeEnvelope is the real `claude -p --output-format json` wrapper. The
+// model's structured output is in .result (a JSON string), not at top level.
+type claudeEnvelope struct {
+	Type    string `json:"type"`
+	Subtype string `json:"subtype"`
+	IsError bool   `json:"is_error"`
+	Result  string `json:"result"`
+	Usage   struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
+}
+
 func (c Claude) Run(ctx context.Context, req Request) (Result, error) {
 	schemaContent := ""
 	if req.SchemaPath != "" {
@@ -86,14 +122,21 @@ func (c Claude) Run(ctx context.Context, req Request) (Result, error) {
 		}
 	}
 	pr := runProcess(ctx, req.Workdir, c.bin(), claudeArgs(req, schemaContent))
-	return Result{
-		ExitCode:         pr.ExitCode,
-		Stdout:           pr.Stdout,
-		Stderr:           pr.Stderr,
-		FinalJSON:        pr.Stdout,
-		FinalJSONOK:      completeJSON(pr.Stdout),
-		KilledByWatchdog: pr.Killed,
-	}, nil
+
+	res := Result{ExitCode: pr.ExitCode, Stdout: pr.Stdout, Stderr: pr.Stderr, KilledByWatchdog: pr.Killed}
+	var env claudeEnvelope
+	if json.Unmarshal(pr.Stdout, &env) == nil && env.Type == "result" {
+		// unwrap: the business result is env.Result (a JSON string)
+		res.FinalJSON = []byte(env.Result)
+		res.FinalJSONOK = !env.IsError && completeJSON(res.FinalJSON)
+		t := env.Usage.InputTokens + env.Usage.OutputTokens
+		res.ReportedTokens = &t
+	} else {
+		// not the expected envelope (e.g. process failed before producing it)
+		res.FinalJSON = pr.Stdout
+		res.FinalJSONOK = completeJSON(pr.Stdout)
+	}
+	return res, nil
 }
 
 func joinCSV(items []string) string {

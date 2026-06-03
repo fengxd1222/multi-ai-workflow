@@ -23,6 +23,10 @@ func runProcess(ctx context.Context, dir, name string, args []string) procResult
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Explicit empty stdin: codex/claude otherwise block on "Reading additional
+	// input from stdin..." instead of getting an immediate EOF (calibrated
+	// against codex-cli 0.135.0).
+	cmd.Stdin = bytes.NewReader(nil)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

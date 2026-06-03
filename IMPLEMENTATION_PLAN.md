@@ -142,6 +142,15 @@ push 模型 · worktree-per-write-job · events 单一真相 · 信任边界(wor
 ## v1 完成 ✅
 
 M1–M6 全部 Complete。11 个 internal 包全部测试绿、覆盖率 ≥80%、`go vet` 干净、`-race` 干净、二进制端到端冒烟通过。一个 task 从 create→delegate→run→verify→integrate→handoff 闭环跑通，崩溃恢复(stale 探活/丢 worktree/孤儿清理/熔断)就位。
+
+### 真实 CLI 校准（claude 2.1.156 / codex 0.135.0）
+对照真实 CLI 输出修正了 runtime 抽取（e2e 测试 `HARNESS_E2E=1` 才跑，默认跳过）：
+- **claude**：`-p --output-format json` 真实输出是外层包装 `{type:"result", result:"<JSON 字符串>", usage:{input_tokens,output_tokens}, is_error}`——修正为拆 `.result` 取业务结果、`.usage` 取 token、`is_error` 判失败。e2e 通过 ✓。
+- **codex**：`--output-last-message` 写的是干净 job-result（无包装）→ 直读正确；补 stdout JSONL `turn.completed.usage` 的 token 抽取。
+- **stdin 加固**：`runProcess` 显式设空 stdin，否则 codex/claude 会卡在「Reading additional input from stdin」。
+- 验证了进程层/业务层分离：codex API 超时→exit 1→`runtime-exec-failed`→job failed（非 result-invalid）。
+- flag 名全部对齐：claude `-p/--output-format/--json-schema/--allowedTools/--permission-mode=acceptEdits`、codex `exec/--json/-s/--output-schema/-o/-C`。
+- 待办：full `harness run` 真实端到端需给 job 加 `goal` 字段并让 buildPrompt 注入明确任务指令；hook payload 字段名(claude tool_name/tool_input、codex tool/input)按文档构造，待真实 hook 事件最终校准。
 - M3: 真实 adapter(codex/claude) + worktree 写隔离 + result 求真(§8.4) + 看门狗 + schema 修复回路。
 - M4: hooks(path guard/迁移点 diff review/task-stop 拆分) + 危险命令硬 deny + 注入隔离。
 - M5: verify 分层(CLI 实跑) + integrate(集成 worktree merge+abort → harness/integration 分支) + handoff + gate。
