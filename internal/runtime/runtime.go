@@ -9,14 +9,16 @@ import "context"
 
 // Request is everything an adapter hands a runtime to run one job.
 type Request struct {
-	JobID        string
-	Runtime      string // "codex" | "claude"
-	Workdir      string // cwd: a worktree for write jobs, repo_root for read-only
-	Prompt       string
-	SchemaPath   string
-	AllowedTools []string // claude --allowedTools whitelist
-	Sandbox      string   // codex --sandbox mode
-	TimeoutS     int
+	JobID         string
+	Runtime       string // "codex" | "claude"
+	Workdir       string // cwd: a worktree for write jobs, repo_root for read-only
+	Prompt        string
+	SchemaPath    string
+	FinalJSONPath string   // codex: --output-last-message destination
+	AllowedTools  []string // claude --allowedTools whitelist
+	Sandbox       string   // codex --sandbox mode
+	TimeoutS      int
+	RepairOf      string // non-empty on a schema-repair retry: the prior error (rev3 §8.3)
 }
 
 // Result separates the process layer (exit/stdout/stderr/usage) from the

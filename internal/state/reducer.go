@@ -14,12 +14,18 @@ type State struct {
 }
 
 // statusChange is the payload shape for *.status_changed / task.phase_changed.
+// The optional worker/worktree fields let created->running also stamp the
+// runtime identity and worktree binding in a single event (rev3 §8 step 4).
 type statusChange struct {
-	JobID  string `json:"job_id,omitempty"`
-	TaskID string `json:"task_id,omitempty"`
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Reason string `json:"reason,omitempty"`
+	JobID      string        `json:"job_id,omitempty"`
+	TaskID     string        `json:"task_id,omitempty"`
+	From       string        `json:"from"`
+	To         string        `json:"to"`
+	Reason     string        `json:"reason,omitempty"`
+	Worker     *model.Worker `json:"worker,omitempty"`
+	Workdir    string        `json:"workdir,omitempty"`
+	Branch     string        `json:"branch,omitempty"`
+	BaseCommit string        `json:"base_commit,omitempty"`
 }
 
 // Reduce replays events in order and reconstructs entity state. This is the
@@ -49,6 +55,20 @@ func Reduce(evs []model.Event) (*State, error) {
 			j.Status = p.To
 			if ev.CAS != nil {
 				j.Rev = ev.CAS.NewRev
+			}
+			if p.Worker != nil {
+				j.Worker = p.Worker
+			}
+			if p.Workdir != "" {
+				j.Workdir = p.Workdir
+			}
+			if p.Branch != "" {
+				b := p.Branch
+				j.Branch = &b
+			}
+			if p.BaseCommit != "" {
+				c := p.BaseCommit
+				j.BaseCommit = &c
 			}
 
 		case model.EvTaskCreated:

@@ -2,11 +2,57 @@ package state
 
 import (
 	"errors"
+	"os"
 	"testing"
 
+	"github.com/fengxudong/harness/internal/event"
 	"github.com/fengxudong/harness/internal/model"
 	"github.com/fengxudong/harness/internal/store"
 )
+
+func TestTransitionJobRunning_StampsWorktreeAndRebuilds(t *testing.T) {
+	e := newEngine(t)
+	if err := e.CreateJob("c", minimalJob("J-1")); err != nil {
+		t.Fatal(err)
+	}
+	w := &model.Worker{PID: 4321, BootID: "boot-x"}
+	j, err := e.TransitionJobRunning("a", "J-1", 1, w, "/wd", "job/J-1", "abc1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.Status != model.JobRunning || j.Rev != 2 || j.Worker == nil || j.Worker.PID != 4321 ||
+		j.Workdir != "/wd" || j.Branch == nil || *j.Branch != "job/J-1" || j.BaseCommit == nil || *j.BaseCommit != "abc1234" {
+		t.Fatalf("running stamp wrong: %+v", j)
+	}
+	// the worktree binding survives a pure-from-events rebuild
+	if err := os.RemoveAll(e.L.Views(e.SID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.RebuildViews(); err != nil {
+		t.Fatal(err)
+	}
+	var v model.Job
+	if err := store.ReadJSON(e.L.JobView(e.SID, "J-1"), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.Worker == nil || v.Worker.PID != 4321 || v.Workdir != "/wd" || v.Branch == nil || *v.Branch != "job/J-1" {
+		t.Fatalf("rebuilt running stamp lost: %+v", v)
+	}
+}
+
+func TestAppendInfo(t *testing.T) {
+	e := newEngine(t)
+	if err := e.AppendInfo("worker:J-1", model.EvUsageReported, map[string]int{"tokens": 5}); err != nil {
+		t.Fatal(err)
+	}
+	evs, err := event.Fold(e.L, e.SID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 1 || evs[0].Type != model.EvUsageReported {
+		t.Fatalf("AppendInfo did not record event: %+v", evs)
+	}
+}
 
 func TestRebuildViews_IncludesTasks(t *testing.T) {
 	e := newEngine(t)

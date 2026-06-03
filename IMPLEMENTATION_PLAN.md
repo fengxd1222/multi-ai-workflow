@@ -59,7 +59,27 @@ push 模型 · worktree-per-write-job · events 单一真相 · 信任边界(wor
 
 **Status**: Complete
 
-## Stage M3–M6（未开始）
+## Stage M3: adapter 编排 + worktree 写隔离 + 真实 runtime（进行中）
+
+**Goal**: 把 state/scope/runtime 拼成 adapter：写 job 起 worktree → 经注入 Runtime 跑 → 抓 artifacts → result 抽取+schema 校验(修复回路) → §8.4 求真(git 算 changed_files、CLI 重跑 verify) → CAS 迁终态。看门狗超时 SIGKILL。真实 codex/claude 薄封装。
+
+**模块**（internal/）:
+- `worktree`: Add(`git worktree add -b job/<jid>`，base=HEAD) · Remove(remove --force + prune + branch -D，幂等)。
+- `runtime`: 进程运行器(Setpgid + 看门狗 kill -pgid) + Codex/Claude argv 构造 + result 抽取(§8.2)。
+- `adapter`: Run 编排；packet 组装(≤4KiB assert) + verify 实跑 + 求真 + CAS 迁移。
+- `model`: JobResult + 校验；state 扩展 TransitionJobRunning(写 worker/worktree 字段)。
+
+**Success Criteria**:
+- [x] worktree Add/Remove 幂等：Remove 后再 Add 不因分支残留 fatal（N16）。
+- [x] Mock 驱动：Normal→completed；ScopeViolation→needs-human(求真 git diff 抓越权，不信自报)；BadSchema→修复重试→completed；Zombie→timeout(看门狗)；NonZeroExit/Torn→runtime-exec-failed→failed；verify 失败→failed。
+- [x] result 求真：completed 由 CLI 重跑 verify 判定 + git 算 changed_files，非 worker 自报（C3）。
+- [x] 进程运行器看门狗：超时 SIGKILL 子进程组，快速返回。
+- [x] 覆盖率 adapter 82.9 / runtime 90.1 / worktree 94.1 / cli 80.3 / state 83.1，`-race` 干净；真实 codex/claude 用 missing-bin 确定性测试替代 skip。
+- [x] `harness run --job` CLI 接通整链；runtime bin 可经 HARNESS_{CODEX,CLAUDE}_BIN 覆盖。
+
+**Status**: Complete
+
+## Stage M4–M6（未开始）
 - M3: 真实 adapter(codex/claude) + worktree 写隔离 + result 求真(§8.4) + 看门狗 + schema 修复回路。
 - M4: hooks(path guard/迁移点 diff review/task-stop 拆分) + 危险命令硬 deny + 注入隔离。
 - M5: verify 分层(CLI 实跑) + integrate(集成 worktree merge+abort → harness/integration 分支) + handoff + gate。

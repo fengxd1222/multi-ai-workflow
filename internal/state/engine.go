@@ -73,6 +73,32 @@ func (e *Engine) CreateJob(actor string, j model.Job) error {
 // legal. Returns ErrCASRetry on rev mismatch (code 32) and ErrIllegalTransition
 // (after recording policy.violation) for an illegal move.
 func (e *Engine) TransitionJob(actor, jobID string, expectRev int, to string) (model.Job, error) {
+	return e.jobTransition(actor, jobID, expectRev, to, statusChange{}, nil)
+}
+
+// TransitionJobRunning moves created->running while stamping the worker identity
+// and worktree binding in the same event (rev3 §8 step 4, N8).
+func (e *Engine) TransitionJobRunning(actor, jobID string, expectRev int, w *model.Worker, workdir, branch, baseCommit string) (model.Job, error) {
+	patch := statusChange{Worker: w, Workdir: workdir, Branch: branch, BaseCommit: baseCommit}
+	apply := func(j *model.Job) {
+		if w != nil {
+			j.Worker = w
+		}
+		if workdir != "" {
+			j.Workdir = workdir
+		}
+		if branch != "" {
+			j.Branch = &branch
+		}
+		if baseCommit != "" {
+			j.BaseCommit = &baseCommit
+		}
+	}
+	return e.jobTransition(actor, jobID, expectRev, model.JobRunning, patch, apply)
+}
+
+// jobTransition is the shared CAS-checked transition path for jobs.
+func (e *Engine) jobTransition(actor, jobID string, expectRev int, to string, patch statusChange, apply func(*model.Job)) (model.Job, error) {
 	lk, err := store.AcquireLock(e.L.StateLock())
 	if err != nil {
 		return model.Job{}, err
@@ -97,7 +123,10 @@ func (e *Engine) TransitionJob(actor, jobID string, expectRev int, to string) (m
 	}
 
 	newRev := j.Rev + 1
-	payload, _ := json.Marshal(statusChange{JobID: jobID, From: j.Status, To: to})
+	patch.JobID = jobID
+	patch.From = j.Status
+	patch.To = to
+	payload, _ := json.Marshal(patch)
 	cas := &model.CAS{Entity: "job:" + jobID, ExpectRev: expectRev, NewRev: newRev}
 	ev := e.newEvent(actor, model.EvJobStatusChanged, cas, payload)
 	if err := event.AppendRaw(e.L, e.SID, ev); err != nil {
@@ -105,6 +134,9 @@ func (e *Engine) TransitionJob(actor, jobID string, expectRev int, to string) (m
 	}
 	j.Status = to
 	j.Rev = newRev
+	if apply != nil {
+		apply(j)
+	}
 	if err := store.WriteAtomicJSON(e.L.JobView(e.SID, jobID), j); err != nil {
 		return *j, err
 	}
@@ -217,6 +249,18 @@ func (e *Engine) fold() (*State, error) {
 		return nil, err
 	}
 	return Reduce(evs)
+}
+
+// AppendInfo appends a non-transition event (usage.reported, scope.violation,
+// …). These carry no CAS and need no state.lock — each actor appends its own
+// file (rev3 §4). The ULID generator is mutex-guarded so concurrent callers are
+// safe.
+func (e *Engine) AppendInfo(actor, typ string, payload any) error {
+	p, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return event.AppendRaw(e.L, e.SID, e.newEvent(actor, typ, nil, p))
 }
 
 func (e *Engine) appendPolicyViolation(actor, entity, msg string) error {

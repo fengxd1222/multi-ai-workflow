@@ -34,8 +34,16 @@ func run(args []string) int {
 		usage()
 		return cli.ExitUsage
 
+	case "run":
+		jobID := flagValue(args[1:], "--job")
+		if jobID == "" {
+			usage()
+			return cli.ExitUsage
+		}
+		return report(cli.Run(cwd, flagValue(args[1:], "--session"), jobID))
+
 	case "recover":
-		return report(cli.Recover(cwd, sessionFlag(args[1:])))
+		return report(cli.Recover(cwd, flagValue(args[1:], "--session")))
 
 	case "version", "--version", "-v":
 		fmt.Println("harness v1 (M1)")
@@ -55,12 +63,12 @@ func report(err error) int {
 	return cli.ExitOK
 }
 
-func sessionFlag(args []string) string {
+func flagValue(args []string, name string) string {
 	for i, a := range args {
-		if a == "--session" && i+1 < len(args) {
+		if a == name && i+1 < len(args) {
 			return args[i+1]
 		}
-		if v, ok := strings.CutPrefix(a, "--session="); ok {
+		if v, ok := strings.CutPrefix(a, name+"="); ok {
 			return v
 		}
 	}
@@ -73,6 +81,7 @@ func usage() {
 usage:
   harness init                 initialize .harness/ in the current git repo
   harness session start        start a session, capture repo baseline
+  harness run --job <id>       run a created job to a terminal state
   harness recover [--session]  rebuild views from the event log
   harness version`)
 }
