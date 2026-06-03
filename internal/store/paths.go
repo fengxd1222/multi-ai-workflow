@@ -57,8 +57,23 @@ func (l Layout) JobView(sid, jid string) string {
 func (l Layout) GateView(sid, gid string) string {
 	return filepath.Join(l.Views(sid), "gates", gid+".json")
 }
+func (l Layout) TaskDir(sid, tid string) string {
+	return filepath.Join(l.Session(sid), "tasks", tid)
+}
+func (l Layout) Verification(sid, tid string) string {
+	return filepath.Join(l.TaskDir(sid, tid), "verification.json")
+}
+func (l Layout) Handoff(sid, tid string) string {
+	return filepath.Join(l.TaskDir(sid, tid), "handoff.md")
+}
+func (l Layout) GatesDir(sid string) string {
+	return filepath.Join(l.Views(sid), "gates")
+}
 func (l Layout) Artifacts(sid, jid string) string {
 	return filepath.Join(l.Session(sid), "artifacts", jid)
+}
+func (l Layout) FinalJSON(sid, jid string) string {
+	return filepath.Join(l.Artifacts(sid, jid), "final.json")
 }
 func (l Layout) Trash(jid string) string {
 	return filepath.Join(l.StateRoot, ".trash", jid)

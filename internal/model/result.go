@@ -24,6 +24,42 @@ type ResultUsage struct {
 	Tokens int `json:"tokens"`
 }
 
+// Verification mirrors schemas/verification.schema.json. Checks are run by the
+// CLI (rev3 §13); `required` defaults to true when absent (fail-safe, N23).
+type Verification struct {
+	Level  string              `json:"level,omitempty"`
+	Checks []VerificationCheck `json:"checks"`
+}
+
+type VerificationCheck struct {
+	Level      string `json:"level,omitempty"`
+	Command    string `json:"command"`
+	Result     string `json:"result"`
+	ExitCode   *int   `json:"exit_code,omitempty"`
+	DurationMS *int   `json:"duration_ms,omitempty"`
+	LogRef     string `json:"log_ref,omitempty"`
+	Required   *bool  `json:"required,omitempty"`
+}
+
+// IsRequired reports whether a check is required; absent means true (N23).
+func (c VerificationCheck) IsRequired() bool { return c.Required == nil || *c.Required }
+
+// Passed reports whether the task-level verification satisfies completion
+// contract condition 2: at least one required check, and all required passed.
+// An empty/required-less set is NOT vacuously true (rev3 §6 N23).
+func (v Verification) Passed() bool {
+	hasRequired := false
+	for _, c := range v.Checks {
+		if c.IsRequired() {
+			hasRequired = true
+			if c.Result != JobCompleted && c.Result != "passed" {
+				return false
+			}
+		}
+	}
+	return hasRequired
+}
+
 var resultStatuses = map[string]bool{
 	JobCompleted: true, JobFailed: true, JobNeedsHuman: true,
 }

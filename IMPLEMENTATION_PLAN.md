@@ -79,7 +79,25 @@ push 模型 · worktree-per-write-job · events 单一真相 · 信任边界(wor
 
 **Status**: Complete
 
-## Stage M4–M6（未开始）
+## Stage M4: hooks 闸门 + 危险命令硬 deny + 注入隔离（进行中）
+
+**Goal**: PreToolUse path guard(§9 算法)、PostToolUse 迁移点 diff review、task-stop 拆 worker/orchestrator；危险命令(不可逆副作用)PreToolUse 硬 deny、混淆/不可解析 gate；reserved 硬拦层 + 注入隔离。
+
+**模块**（internal/）:
+- `guard`: ClassifyCommand(网络出站/push/装包/destructive/写保护→deny；eval/base64/管道→gate) · EvaluatePreTool(write 工具路径过 §9 Normalize+Classify+命令危险性) · PostToolReview(ChangedSet 求真) · hook I/O 解析(codex/claude PreToolUse→ToolCall) + 决策格式化。
+- `cli`: guard pretool/posttool · hook task-stop(worker→job result 已产出 / orchestrator→completion contract) · ContractStatus 计算。
+
+**Success Criteria**:
+- [x] ClassifyCommand：rm -rf/curl/git push/npm install/chmod/写 .git→deny；eval/`$(`/base64 -d/管道 sh→gate；echo/npm test→allow。
+- [x] EvaluatePreTool：write 工具 reserved/denied/越界/symlink→deny；default-deny→gate；allowed→allow；read-only 工具→allow。
+- [x] PostToolReview：worktree 内越权(走 ChangedSet，含新建/ignored/rename)→违规并标记。
+- [x] task-stop：worker 缺 result/非终态→block；orchestrator contract(4 条)未满足→block，满足→放行。
+- [x] hook I/O：claude/codex PreToolUse 解析为 ToolCall；决策按平台格式化(claude permissionDecision / codex decision)；CLI 经 stdin 驱动可测；不可解析→gate(fail-safe)。
+- [x] 覆盖率 guard 81.2 / cli 82.9 / store 84.4，`-race` 干净。
+
+**Status**: Complete
+
+## Stage M5–M6（未开始）
 - M3: 真实 adapter(codex/claude) + worktree 写隔离 + result 求真(§8.4) + 看门狗 + schema 修复回路。
 - M4: hooks(path guard/迁移点 diff review/task-stop 拆分) + 危险命令硬 deny + 注入隔离。
 - M5: verify 分层(CLI 实跑) + integrate(集成 worktree merge+abort → harness/integration 分支) + handoff + gate。

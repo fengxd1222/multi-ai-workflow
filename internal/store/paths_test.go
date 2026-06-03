@@ -24,8 +24,13 @@ func TestLayout_Paths(t *testing.T) {
 		l.JobView("S-1", "J-1"):  "/repo/.harness/sessions/S-1/views/jobs/J-1.json",
 		l.TaskView("S-1", "T-1"): "/repo/.harness/sessions/S-1/views/tasks/T-1.json",
 		l.GateView("S-1", "G-1"): "/repo/.harness/sessions/S-1/views/gates/G-1.json",
-		l.Artifacts("S-1", "J"):  "/repo/.harness/sessions/S-1/artifacts/J",
-		l.Trash("J-1"):           "/repo/.harness/.trash/J-1",
+		l.Artifacts("S-1", "J"):     "/repo/.harness/sessions/S-1/artifacts/J",
+		l.FinalJSON("S-1", "J"):     "/repo/.harness/sessions/S-1/artifacts/J/final.json",
+		l.TaskDir("S-1", "T-1"):     "/repo/.harness/sessions/S-1/tasks/T-1",
+		l.Verification("S-1", "T-1"): "/repo/.harness/sessions/S-1/tasks/T-1/verification.json",
+		l.Handoff("S-1", "T-1"):     "/repo/.harness/sessions/S-1/tasks/T-1/handoff.md",
+		l.GatesDir("S-1"):           "/repo/.harness/sessions/S-1/views/gates",
+		l.Trash("J-1"):              "/repo/.harness/.trash/J-1",
 	}
 	for got, want := range cases {
 		if got != want {
