@@ -10,6 +10,7 @@ import (
 	"github.com/fengxudong/harness/internal/model"
 	"github.com/fengxudong/harness/internal/state"
 	"github.com/fengxudong/harness/internal/store"
+	"github.com/fengxudong/harness/internal/worktree"
 )
 
 // GateList prints open and resolved gates (rev3 §14).
@@ -40,11 +41,12 @@ func GateShow(dir, sid, gateID string) error {
 	return nil
 }
 
-// GateApprove resolves a gate as approved. For approve_extra_files it persists
-// the approved paths into the job's scope so re-review won't re-gate them
-// (rev3 §14 N30).
+// GateApprove resolves a gate as approved: for approve_extra_files it persists
+// the paths into the job's scope (N30), then moves the job out of needs-human so
+// task completion isn't blocked — a non-completed job is reset to created for a
+// clean re-run and its worktree discarded (review findings 1 & 2).
 func GateApprove(dir, sid, gateID, option string, files []string) error {
-	_, l, sid, err := sessionLayout(dir, sid)
+	root, l, sid, err := sessionLayout(dir, sid)
 	if err != nil {
 		return err
 	}
@@ -54,55 +56,63 @@ func GateApprove(dir, sid, gateID, option string, files []string) error {
 		return coded(ExitUsage, "gate %s not found", gateID)
 	}
 
-	if option == "approve_extra_files" && len(files) > 0 {
-		var job model.Job
-		if err := store.ReadJSON(l.JobView(sid, g.JobID), &job); err != nil {
-			return coded(ExitUsage, "job %s not found for gate", g.JobID)
-		}
+	var job model.Job
+	hasJob := store.ReadJSON(l.JobView(sid, g.JobID), &job) == nil
+
+	if option == "approve_extra_files" && len(files) > 0 && hasJob {
 		if _, err := eng.ExtendJobScope("human", g.JobID, job.Rev, files); err != nil {
 			return err
 		}
+		_ = store.ReadJSON(l.JobView(sid, g.JobID), &job) // refresh rev
 	}
 
 	res := &model.Resolution{Option: option, ResolvedAt: event.Now(), By: "human"}
 	if _, err := eng.ResolveGate("human", gateID, "approved", res); err != nil {
 		return err
 	}
-	fmt.Printf("gate %s approved (%s)\n", gateID, option)
-	fmt.Printf("next: %s\n", nextAction(g, "approved"))
+
+	next := fmt.Sprintf("`harness integrate --task %s` to retry with the approved scope", g.TaskID)
+	if hasJob && nonCompletedTerminal(job.Status) {
+		if _, err := eng.ResolveJob("human", g.JobID, model.JobCreated); err == nil {
+			_ = worktree.Remove(root, g.JobID)
+			next = fmt.Sprintf("`harness run --job %s` to re-run with the approved scope, then `harness integrate --task %s`", g.JobID, g.TaskID)
+		}
+	}
+	fmt.Printf("gate %s approved (%s)\nnext: %s\n", gateID, option, next)
 	return nil
 }
 
-// GateReject resolves a gate as rejected.
+// GateReject resolves a gate as rejected: the job's work is abandoned (cancelled,
+// excluded from completion) and its worktree discarded so the task can be closed
+// out via a corrected re-delegation (review findings 1 & 2).
 func GateReject(dir, sid, gateID string) error {
-	_, l, sid, err := sessionLayout(dir, sid)
+	root, l, sid, err := sessionLayout(dir, sid)
 	if err != nil {
 		return err
 	}
+	eng := state.New(l, sid)
 	var g model.Gate
-	_ = store.ReadJSON(l.GateView(sid, gateID), &g)
-	res := &model.Resolution{Option: "reject_and_rollback", ResolvedAt: event.Now(), By: "human"}
-	if _, err := state.New(l, sid).ResolveGate("human", gateID, "rejected", res); err != nil {
+	if err := store.ReadJSON(l.GateView(sid, gateID), &g); err != nil {
 		return coded(ExitUsage, "gate %s not found", gateID)
 	}
-	fmt.Printf("gate %s rejected\n", gateID)
-	fmt.Printf("next: %s\n", nextAction(g, "rejected"))
+	res := &model.Resolution{Option: "reject_and_rollback", ResolvedAt: event.Now(), By: "human"}
+	if _, err := eng.ResolveGate("human", gateID, "rejected", res); err != nil {
+		return err
+	}
+	if _, err := eng.ResolveJob("human", g.JobID, model.JobCancelled); err == nil {
+		_ = worktree.Remove(root, g.JobID)
+	}
+	fmt.Printf("gate %s rejected\nnext: job %s cancelled; re-delegate a corrected job if needed, then `harness integrate --task %s`\n",
+		gateID, g.JobID, g.TaskID)
 	return nil
 }
 
-// nextAction prints the concrete follow-up command for a resolved gate so the
-// human isn't left guessing (review finding 5).
-func nextAction(g model.Gate, resolution string) string {
-	switch {
-	case resolution == "rejected":
-		return fmt.Sprintf("`harness recover` to reset/re-dispatch job %s (its worktree is discarded), then re-delegate if needed", g.JobID)
-	case g.Reason == "merge-conflict" || g.Reason == "denied-change-at-integrate":
-		return fmt.Sprintf("re-run `harness integrate --task %s`", g.TaskID)
-	case g.Reason == "scope-violation" || g.Reason == "scope violation":
-		return fmt.Sprintf("scope extended; re-delegate/re-run job %s, then `harness integrate --task %s`", g.JobID, g.TaskID)
-	default:
-		return fmt.Sprintf("review job %s, then `harness integrate --task %s`", g.JobID, g.TaskID)
+func nonCompletedTerminal(status string) bool {
+	switch status {
+	case model.JobNeedsHuman, model.JobFailed, model.JobTimeout:
+		return true
 	}
+	return false
 }
 
 func loadGates(l store.Layout, sid string) []model.Gate {

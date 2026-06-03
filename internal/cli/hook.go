@@ -107,13 +107,20 @@ func ComputeContract(l store.Layout, sid, taskID string) (Contract, error) {
 
 	_ = task
 	c := Contract{}
-	jobs := jobsForTask(l, sid, taskID)
-	c.AllJobsDone = len(jobs) > 0
-	for _, j := range jobs {
+	// Cancelled jobs are gate-resolved/abandoned and excluded; the contract needs
+	// at least one non-cancelled job and all of them completed (review finding 1).
+	active := 0
+	allDone := true
+	for _, j := range jobsForTask(l, sid, taskID) {
+		if j.Status == model.JobCancelled {
+			continue
+		}
+		active++
 		if j.Status != model.JobCompleted {
-			c.AllJobsDone = false
+			allDone = false
 		}
 	}
+	c.AllJobsDone = active > 0 && allDone
 
 	var v model.Verification
 	if err := store.ReadJSON(l.Verification(sid, taskID), &v); err == nil {

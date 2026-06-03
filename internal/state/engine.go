@@ -281,18 +281,90 @@ func (e *Engine) OpenGate(actor string, g model.Gate) error {
 	return store.WriteAtomicJSON(e.L.GateView(e.SID, g.GateID), g)
 }
 
-// OpenGateForJob mints a gate id (ULID) and opens a needs-human gate for a job.
-// This is the single path used wherever a job enters needs-human (adapter scope
-// violation / commit failure, recover escalation) so the human always has an
-// actionable gate (rev3 §14; review finding 1).
+// OpenGateForJob opens a needs-human gate for a job, reusing an existing open
+// gate with the same job+reason instead of opening a duplicate (idempotent;
+// review finding 3). This is the single path used wherever a job enters
+// needs-human (adapter scope violation / commit failure, recover escalation).
 func (e *Engine) OpenGateForJob(actor, taskID, jobID, reason string, affected []string) (model.Gate, error) {
+	lk, err := store.AcquireLock(e.L.StateLock())
+	if err != nil {
+		return model.Gate{}, err
+	}
+	defer lk.Release()
+
+	st, err := e.fold()
+	if err != nil {
+		return model.Gate{}, err
+	}
+	for _, g := range st.Gates {
+		if g.JobID == jobID && g.Reason == reason && g.Status == "open" {
+			return *g, nil // reuse, don't duplicate
+		}
+	}
 	g := model.Gate{
 		GateID: "G-" + e.gen.New(), TaskID: taskID, JobID: jobID, Reason: reason,
 		AffectedFiles: affected,
 		Options:       []string{"approve_extra_files", "reject_and_rollback", "reassign_scope"},
 		Recommended:   "reject_and_rollback", Status: "open", CreatedAt: event.Now(),
 	}
-	return g, e.OpenGate(actor, g)
+	payload, _ := json.Marshal(g)
+	if err := event.AppendRaw(e.L, e.SID, e.newEvent(actor, model.EvGateOpened, nil, payload)); err != nil {
+		return g, err
+	}
+	return g, store.WriteAtomicJSON(e.L.GateView(e.SID, g.GateID), g)
+}
+
+// ResolveJob is the gate-driven privileged transition of a job out of a
+// non-completed terminal state: to=cancelled (abandon, ignored by completion)
+// or to=created (re-dispatch). Allowed only from failed/needs-human/timeout
+// (review findings 1 & 2).
+func (e *Engine) ResolveJob(actor, jobID, to string) (model.Job, error) {
+	lk, err := store.AcquireLock(e.L.StateLock())
+	if err != nil {
+		return model.Job{}, err
+	}
+	defer lk.Release()
+
+	st, err := e.fold()
+	if err != nil {
+		return model.Job{}, err
+	}
+	j := st.Jobs[jobID]
+	if j == nil {
+		return model.Job{}, ErrNotFound
+	}
+	switch to {
+	case model.JobCancelled:
+		// any non-cancelled terminal can be abandoned (incl. a completed job an
+		// integrate gate rejected)
+		switch j.Status {
+		case model.JobFailed, model.JobNeedsHuman, model.JobTimeout, model.JobCompleted:
+		default:
+			return *j, fmt.Errorf("job %s is %s; not cancellable", jobID, j.Status)
+		}
+	case model.JobCreated:
+		// re-dispatch only a non-completed terminal
+		switch j.Status {
+		case model.JobFailed, model.JobNeedsHuman, model.JobTimeout:
+		default:
+			return *j, fmt.Errorf("job %s is %s; not re-dispatchable", jobID, j.Status)
+		}
+	default:
+		return *j, fmt.Errorf("invalid resolve target %q", to)
+	}
+
+	newRev := j.Rev + 1
+	payload, _ := json.Marshal(statusChange{JobID: jobID, From: j.Status, To: to, Reason: "gate-resolution"})
+	cas := &model.CAS{Entity: "job:" + jobID, ExpectRev: j.Rev, NewRev: newRev}
+	if err := event.AppendRaw(e.L, e.SID, e.newEvent(actor, model.EvJobStatusChanged, cas, payload)); err != nil {
+		return *j, err
+	}
+	j.Status = to
+	j.Rev = newRev
+	if err := store.WriteAtomicJSON(e.L.JobView(e.SID, jobID), j); err != nil {
+		return *j, err
+	}
+	return *j, nil
 }
 
 // ResolveGate transitions a gate to approved/rejected with a resolution.

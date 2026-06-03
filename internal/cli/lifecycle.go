@@ -61,11 +61,11 @@ func Integrate(dir, sid, taskID string) error {
 
 	eng := state.New(l, sid)
 	if res.DeniedJob != "" {
-		_ = openGate(eng, l, sid, taskID, res.DeniedJob, "denied-change-at-integrate")
+		_ = openGate(eng, taskID, res.DeniedJob, "denied-change-at-integrate")
 		return coded(ExitNeedsHuman, "integrate blocked: job %s introduced out-of-scope changes", res.DeniedJob)
 	}
 	if res.ConflictJob != "" {
-		_ = openGate(eng, l, sid, taskID, res.ConflictJob, "merge-conflict")
+		_ = openGate(eng, taskID, res.ConflictJob, "merge-conflict")
 		return coded(ExitNeedsHuman, "integrate blocked: job %s conflicted (merge aborted)", res.ConflictJob)
 	}
 	_ = eng.AppendInfo("orchestrator", model.EvIntegrateDone, map[string]any{
@@ -111,13 +111,9 @@ func Handoff(dir, sid, taskID string) error {
 	return nil
 }
 
-func openGate(eng *state.Engine, l store.Layout, sid, taskID, jobID, reason string) error {
-	g := model.Gate{
-		GateID: newGateID(), TaskID: taskID, JobID: jobID, Reason: reason,
-		Options:     []string{"approve_extra_files", "reject_and_rollback", "reassign_scope"},
-		Recommended: "reject_and_rollback", Status: "open", CreatedAt: event.Now(),
-	}
-	return eng.OpenGate("orchestrator", g)
+func openGate(eng *state.Engine, taskID, jobID, reason string) error {
+	_, err := eng.OpenGateForJob("orchestrator", taskID, jobID, reason, nil)
+	return err
 }
 
 // integrationBranch scans events for the most recent integrate.completed branch.

@@ -23,6 +23,7 @@ const (
 	JobFailed     = "failed"
 	JobNeedsHuman = "needs-human"
 	JobTimeout    = "timeout"
+	JobCancelled  = "cancelled" // gate-resolved/abandoned; ignored by completion
 
 	ModeWorktree = "worktree"
 	ModeShared   = "shared"
