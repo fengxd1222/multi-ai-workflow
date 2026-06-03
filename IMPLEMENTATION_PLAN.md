@@ -41,8 +41,25 @@ push 模型 · worktree-per-write-job · events 单一真相 · 信任边界(wor
 
 ---
 
-## Stage M2–M6（未开始，细分待 M1 收尾后展开）
-- M2: Runtime 接口 + mock(崩溃/越权/僵死注入) + job/task 状态机(CAS) + §9 scope 求值算法 + 8 条越权用例。
+## Stage M2: scope 求值 + Runtime 接口/Mock（进行中）
+
+**Goal**: 落地 scope-eval.md 的确定性算法（路径规范化/glob/分类/真实改动集），配 8 条越权用例；建立 Runtime 抽象与 Mock（崩溃/越权/僵死/坏 schema/非零退出注入），作为 M3/M4 的可注入测试缝。job/task 状态机 CAS 已在 M1 完成。
+
+**模块**（internal/）:
+- `scope`: Normalize(realpath+逐段 lstat 防 symlink+逃逸+casefold) · Match(gitignore/minimatch，`p/**` 匹配 `p`) · Classify(reserved>denied>allowed>default-deny) · ChangedSet(`status --porcelain -uall --ignored` ∪ `diff --name-status -M`) · LoadReserved。
+- `runtime`: Request/Result · Runtime 接口 · Mock(脚本化场景：Normal/BadSchema/NonZeroExit/Zombie/ScopeViolation)。
+
+**Success Criteria**:
+- [x] 8 条越权用例(scope-eval.md §8)全绿：新建 untracked / .env ignored / rename 双端 / 大小写 / `../` 逃逸 / symlink 穿越 / deny>allow / default-deny。
+- [x] Match 语义正确：`**` 跨目录、`*` 不跨 `/`、`p/**` 同时匹配 `p` 与 `p/x`。
+- [x] Classify 优先级 reserved>denied>allowed>default-deny。
+- [x] ChangedSet 含新建 untracked、ignored、rename 双端。
+- [x] Mock 场景行为正确：Zombie 响应 ctx 取消并标 KilledByWatchdog；NonZeroExit 退出码≠0；Normal/Torn/NoUsage/ScopeViolation。
+- [x] 覆盖率 scope 81.9% / runtime 83.3%，`-race` 干净。
+
+**Status**: Complete
+
+## Stage M3–M6（未开始）
 - M3: 真实 adapter(codex/claude) + worktree 写隔离 + result 求真(§8.4) + 看门狗 + schema 修复回路。
 - M4: hooks(path guard/迁移点 diff review/task-stop 拆分) + 危险命令硬 deny + 注入隔离。
 - M5: verify 分层(CLI 实跑) + integrate(集成 worktree merge+abort → harness/integration 分支) + handoff + gate。
