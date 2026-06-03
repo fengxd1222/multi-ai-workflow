@@ -123,7 +123,7 @@ func run(args []string) int {
 		return report(cli.Recover(cwd, flagValue(args[1:], "--session")))
 
 	case "version", "--version", "-v":
-		fmt.Println("harness v1 (M1)")
+		fmt.Println("harness v1")
 		return cli.ExitOK
 
 	default:
