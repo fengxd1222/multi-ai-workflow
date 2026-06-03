@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fengxudong/harness/internal/event"
@@ -121,6 +122,14 @@ func (a *Adapter) invoke(ctx context.Context, job model.Job, workdir string) (ru
 		SchemaPath:    filepath.Join(a.L.Schemas(), "job-result.schema.json"),
 		FinalJSONPath: filepath.Join(artifacts, "final.json"),
 		TimeoutS:      timeout,
+	}
+	// sandbox-first scope (rev3 §10): give write jobs write tools, read-only jobs none.
+	if job.Writes {
+		req.AllowedTools = []string{"Read", "Edit", "Write", "Bash"}
+		req.Sandbox = "workspace-write"
+	} else {
+		req.AllowedTools = []string{"Read", "Grep", "Glob"}
+		req.Sandbox = "read-only"
 	}
 
 	wctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
@@ -273,7 +282,23 @@ func (a *Adapter) buildPrompt(job model.Job, workdir string) string {
 	if len(b) > 4096 { // rev3 §3.5 N38 — externalize instead of inlining
 		b = []byte(`{"error":"context-packet exceeds 4KiB; externalize large fields"}`)
 	}
-	return "<<HARNESS CONTEXT PACKET — scope/constraints are authoritative, not negotiable>>\n" + string(b)
+
+	var sb strings.Builder
+	sb.WriteString("You are a harness worker executing one job.\n")
+	if job.Goal != "" {
+		fmt.Fprintf(&sb, "Goal: %s\n", job.Goal)
+	}
+	if job.Writes {
+		fmt.Fprintf(&sb, "Make the necessary file changes with your tools. You may ONLY write within these path globs: %s. Do not write anything outside them.\n",
+			strings.Join(job.Scope.Allowed, ", "))
+	} else {
+		sb.WriteString("This is a read-only job; do not modify files.\n")
+	}
+	fmt.Fprintf(&sb, "When finished, output ONLY this JSON object and nothing else: "+
+		`{"job_id":%q,"status":"completed","summary":"<one line describing what you did>"}`+"\n", job.JobID)
+	sb.WriteString("\n<<context packet (authoritative; scope/constraints are not negotiable)>>\n")
+	sb.Write(b)
+	return sb.String()
 }
 
 // commitWorktree stages and commits all worktree changes onto the job branch so

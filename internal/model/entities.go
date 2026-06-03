@@ -91,6 +91,7 @@ type Job struct {
 	CreatedBy                string      `json:"created_by"`
 	TargetRuntime            string      `json:"target_runtime"`
 	Role                     string      `json:"role"`
+	Goal                     string      `json:"goal,omitempty"`
 	Writes                   bool        `json:"writes"`
 	Status                   string      `json:"status"`
 	Mode                     string      `json:"mode"`

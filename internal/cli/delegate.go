@@ -15,6 +15,7 @@ import (
 type DelegateSpec struct {
 	TaskID      string
 	Role        string
+	Goal        string
 	Runtime     string
 	Allowed     []string
 	Denied      []string
@@ -75,7 +76,7 @@ func Delegate(dir, sid string, spec DelegateSpec) (string, error) {
 	jobID := newJobID()
 	job := model.Job{
 		JobID: jobID, TaskID: spec.TaskID, CreatedBy: "orchestrator", TargetRuntime: spec.Runtime,
-		Role: spec.Role, Writes: writes, Mode: mode,
+		Role: spec.Role, Goal: spec.Goal, Writes: writes, Mode: mode,
 		StateRoot: l.StateRoot, RepoRoot: root, Workdir: root,
 		Scope:                    model.Scope{Allowed: spec.Allowed, Denied: spec.Denied},
 		VerificationRequirements: spec.Verify,
