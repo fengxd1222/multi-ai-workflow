@@ -114,6 +114,67 @@ func TestIntegrate_AbortsOnConflict(t *testing.T) {
 	}
 }
 
+func branchSha(t *testing.T, dir, branch string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", dir, "rev-parse", branch).Output()
+	if err != nil {
+		t.Fatalf("rev-parse %s: %v", branch, err)
+	}
+	return string(out)
+}
+
+// TestIntegrate_FailurePreservesPreviousDelivery: a failed integrate must not
+// destroy the previous good delivery branch (review finding 3).
+func TestIntegrate_FailurePreservesPreviousDelivery(t *testing.T) {
+	dir := repo(t)
+	sc := model.Scope{Allowed: []string{"src/**"}}
+	makeBranch(t, dir, "J-1", map[string]string{"src/x.ts": "x\n"})
+
+	// first integrate succeeds -> delivery branch created
+	res, err := IntegrateTask(dir, "T-1", []JobBranch{{JobID: "J-1", Branch: "job/J-1", Scope: sc}}, scope.Reserved{}, false)
+	if err != nil || !res.OK() {
+		t.Fatalf("first integrate: %+v err=%v", res, err)
+	}
+	deliver := "harness/integration/T-1"
+	firstSha := branchSha(t, dir, deliver)
+
+	// a second integrate that gets denied must leave the prior delivery intact
+	makeBranch(t, dir, "J-2", map[string]string{"package.json": "{}\n"})
+	scDenied := model.Scope{Allowed: []string{"src/**"}, Denied: []string{"package.json"}}
+	res2, err := IntegrateTask(dir, "T-1", []JobBranch{{JobID: "J-2", Branch: "job/J-2", Scope: scDenied}}, scope.Reserved{}, false)
+	if err != nil || res2.DeniedJob != "J-2" {
+		t.Fatalf("second integrate should be denied: %+v err=%v", res2, err)
+	}
+	if branchSha(t, dir, deliver) != firstSha {
+		t.Fatal("failed integrate destroyed the previous delivery branch")
+	}
+	out, _ := exec.Command("git", "-C", dir, "show", deliver+":src/x.ts").Output()
+	if string(out) != "x\n" {
+		t.Fatalf("previous delivery content lost: %q", out)
+	}
+}
+
+// TestIntegrate_MergeBaseIgnoresMainAdvance: a denied file added to main AFTER a
+// job branched must not be mis-attributed to the job (review finding 4).
+func TestIntegrate_MergeBaseIgnoresMainAdvance(t *testing.T) {
+	dir := repo(t)
+	makeBranch(t, dir, "J-1", map[string]string{"src/x.ts": "x\n"}) // off the base commit
+
+	// advance main with a denied file after J-1 branched
+	write(t, dir, "package.json", "{}\n")
+	gitR(t, dir, "add", "-A")
+	gitR(t, dir, "commit", "-qm", "main advances with package.json")
+
+	sc := model.Scope{Allowed: []string{"src/**"}, Denied: []string{"package.json"}}
+	res, err := IntegrateTask(dir, "T-1", []JobBranch{{JobID: "J-1", Branch: "job/J-1", Scope: sc}}, scope.Reserved{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK() {
+		t.Fatalf("J-1 did not touch package.json; merge-base base must not flag it: %+v", res)
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

@@ -69,6 +69,7 @@ func GateApprove(dir, sid, gateID, option string, files []string) error {
 		return err
 	}
 	fmt.Printf("gate %s approved (%s)\n", gateID, option)
+	fmt.Printf("next: %s\n", nextAction(g, "approved"))
 	return nil
 }
 
@@ -78,12 +79,30 @@ func GateReject(dir, sid, gateID string) error {
 	if err != nil {
 		return err
 	}
+	var g model.Gate
+	_ = store.ReadJSON(l.GateView(sid, gateID), &g)
 	res := &model.Resolution{Option: "reject_and_rollback", ResolvedAt: event.Now(), By: "human"}
 	if _, err := state.New(l, sid).ResolveGate("human", gateID, "rejected", res); err != nil {
 		return coded(ExitUsage, "gate %s not found", gateID)
 	}
 	fmt.Printf("gate %s rejected\n", gateID)
+	fmt.Printf("next: %s\n", nextAction(g, "rejected"))
 	return nil
+}
+
+// nextAction prints the concrete follow-up command for a resolved gate so the
+// human isn't left guessing (review finding 5).
+func nextAction(g model.Gate, resolution string) string {
+	switch {
+	case resolution == "rejected":
+		return fmt.Sprintf("`harness recover` to reset/re-dispatch job %s (its worktree is discarded), then re-delegate if needed", g.JobID)
+	case g.Reason == "merge-conflict" || g.Reason == "denied-change-at-integrate":
+		return fmt.Sprintf("re-run `harness integrate --task %s`", g.TaskID)
+	case g.Reason == "scope-violation" || g.Reason == "scope violation":
+		return fmt.Sprintf("scope extended; re-delegate/re-run job %s, then `harness integrate --task %s`", g.JobID, g.TaskID)
+	default:
+		return fmt.Sprintf("review job %s, then `harness integrate --task %s`", g.JobID, g.TaskID)
+	}
 }
 
 func loadGates(l store.Layout, sid string) []model.Gate {

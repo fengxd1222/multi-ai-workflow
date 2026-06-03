@@ -88,19 +88,44 @@ func (a *Adapter) Run(ctx context.Context, jobID string) (Outcome, error) {
 
 	// Commit the worker's changes onto the job branch so the result is captured
 	// deterministically by the CLI (not left to the worker) and is mergeable at
-	// integrate (rev3 §7). Done before scope review so the diff sees it.
+	// integrate (rev3 §7). Done before scope review so the diff sees it. A commit
+	// failure means we cannot capture the worker's output on the branch, so the
+	// job must NOT be marked completed (review finding 2).
 	if running.Writes && res.ExitCode == 0 && res.FinalJSONOK {
-		commitWorktree(workdir, jobID)
+		if _, cerr := commitWorktree(workdir, jobID); cerr != nil {
+			_ = os.WriteFile(filepath.Join(a.L.Artifacts(a.SID, jobID), "commit-error.txt"), []byte(cerr.Error()), 0o644)
+			return a.finish(actor, running, model.JobNeedsHuman, "worktree-commit-failed", nil)
+		}
 	}
 
 	// 6-7. decide terminal state from process layer + ground truth.
 	status, reason, violations := a.decide(actor, running, workdir, base, res)
+	return a.finish(actor, running, status, reason, violations)
+}
 
-	final, err := a.Eng.TransitionJob(actor, jobID, running.Rev, status)
+// finish performs the terminal CAS transition and, whenever a job enters
+// needs-human, opens a gate so the human has something actionable (review
+// finding 1).
+func (a *Adapter) finish(actor string, job model.Job, status, reason string, violations []scope.Verdict) (Outcome, error) {
+	final, err := a.Eng.TransitionJob(actor, job.JobID, job.Rev, status)
 	if err != nil {
 		return Outcome{}, err
 	}
+	if status == model.JobNeedsHuman {
+		_, _ = a.Eng.OpenGateForJob(actor, job.TaskID, job.JobID, reason, verdictPaths(violations))
+	}
 	return Outcome{Job: final, Status: status, Reason: reason, Violations: violations}, nil
+}
+
+func verdictPaths(vs []scope.Verdict) []string {
+	if len(vs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(vs))
+	for _, v := range vs {
+		out = append(out, v.Path)
+	}
+	return out
 }
 
 // invoke builds the request, runs under a timeout watchdog, and (for the
@@ -303,12 +328,22 @@ func (a *Adapter) buildPrompt(job model.Job, workdir string) string {
 
 // commitWorktree stages and commits all worktree changes onto the job branch so
 // the result is durable and mergeable, using a harness identity so it never
-// depends on the repo's git config.
-func commitWorktree(workdir, jobID string) {
-	_ = exec.Command("git", "-C", workdir, "add", "-A").Run()
-	_ = exec.Command("git", "-C", workdir,
+// depends on the repo's git config. Returns the commit SHA, or an error if the
+// stage/commit failed (review finding 2).
+func commitWorktree(workdir, jobID string) (string, error) {
+	if out, err := exec.Command("git", "-C", workdir, "add", "-A").CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git add: %s", out)
+	}
+	if out, err := exec.Command("git", "-C", workdir,
 		"-c", "user.email=harness@local", "-c", "user.name=harness",
-		"commit", "--allow-empty", "-q", "-m", "harness job "+jobID).Run()
+		"commit", "--allow-empty", "-q", "-m", "harness job "+jobID).CombinedOutput(); err != nil {
+		return "", fmt.Errorf("git commit: %s", out)
+	}
+	sha, err := exec.Command("git", "-C", workdir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(sha)), nil
 }
 
 func (a *Adapter) writeArtifacts(jobID string, res runtime.Result) error {

@@ -281,6 +281,20 @@ func (e *Engine) OpenGate(actor string, g model.Gate) error {
 	return store.WriteAtomicJSON(e.L.GateView(e.SID, g.GateID), g)
 }
 
+// OpenGateForJob mints a gate id (ULID) and opens a needs-human gate for a job.
+// This is the single path used wherever a job enters needs-human (adapter scope
+// violation / commit failure, recover escalation) so the human always has an
+// actionable gate (rev3 §14; review finding 1).
+func (e *Engine) OpenGateForJob(actor, taskID, jobID, reason string, affected []string) (model.Gate, error) {
+	g := model.Gate{
+		GateID: "G-" + e.gen.New(), TaskID: taskID, JobID: jobID, Reason: reason,
+		AffectedFiles: affected,
+		Options:       []string{"approve_extra_files", "reject_and_rollback", "reassign_scope"},
+		Recommended:   "reject_and_rollback", Status: "open", CreatedAt: event.Now(),
+	}
+	return g, e.OpenGate(actor, g)
+}
+
 // ResolveGate transitions a gate to approved/rejected with a resolution.
 func (e *Engine) ResolveGate(actor, gateID, status string, res *model.Resolution) (model.Gate, error) {
 	lk, err := store.AcquireLock(e.L.StateLock())

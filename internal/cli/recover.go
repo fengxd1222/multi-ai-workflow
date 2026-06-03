@@ -69,6 +69,7 @@ func Recover(dir, sid string) error {
 		}
 		if nj.Status == model.JobNeedsHuman {
 			escalated++
+			_, _ = eng.OpenGateForJob("recover", nj.TaskID, nj.JobID, "recover-retry-exhausted", nil)
 		} else {
 			recovered++
 		}

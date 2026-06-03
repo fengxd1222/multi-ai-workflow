@@ -102,7 +102,7 @@ func TestAdapter_ScopeViolation_NeedsHuman(t *testing.T) {
 	repo := gitRepo(t)
 	// worker writes package.json (denied) but returns a clean-looking result.
 	rt := runtime.ScopeViolation(goodResult(), map[string]string{"package.json": "{}"})
-	a, eng, _ := newAdapter(t, repo, rt)
+	a, eng, l := newAdapter(t, repo, rt)
 	mkJob(t, eng, repo, true, model.Scope{Allowed: []string{"src/**"}, Denied: []string{"package.json"}}, nil)
 
 	out, err := a.Run(context.Background(), "J-1")
@@ -114,6 +114,16 @@ func TestAdapter_ScopeViolation_NeedsHuman(t *testing.T) {
 	}
 	if len(out.Violations) == 0 {
 		t.Fatal("expected recorded violations")
+	}
+	// needs-human must open an actionable gate (review finding 1)
+	if entries, _ := os.ReadDir(l.GatesDir(sid)); len(entries) == 0 {
+		t.Fatal("needs-human did not open a gate")
+	}
+}
+
+func TestCommitWorktree_ErrorOnNonGitDir(t *testing.T) {
+	if _, err := commitWorktree(t.TempDir(), "J-1"); err == nil {
+		t.Fatal("commitWorktree should error on a non-git dir (review finding 2)")
 	}
 }
 

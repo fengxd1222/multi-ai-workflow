@@ -39,34 +39,54 @@ func (r Result) OK() bool { return r.DeniedJob == "" && r.ConflictJob == "" }
 // denied-change or conflict so the caller can open a gate.
 func IntegrateTask(repoRoot, tid string, jobs []JobBranch, rsv scope.Reserved, ignorecase bool) (Result, error) {
 	intBranch := "harness/integration/" + tid
-	intPath := filepath.Join(repoRoot, ".worktrees", "__int__"+tid)
+	tmpBranch := intBranch + "-tmp"
+	tmpPath := filepath.Join(repoRoot, ".worktrees", "__int__"+tid)
 	res := Result{IntegrationBranch: intBranch}
 
 	mainHEAD, err := git(repoRoot, "rev-parse", "HEAD")
 	if err != nil {
 		return res, fmt.Errorf("no HEAD to integrate onto")
 	}
-	if err := setupWorktree(repoRoot, intBranch, intPath, mainHEAD); err != nil {
+	// Build on a throwaway tmp branch so a failed integrate (denied/conflict)
+	// never destroys the previous delivery branch (review finding 3).
+	if err := setupWorktree(repoRoot, tmpBranch, tmpPath, mainHEAD); err != nil {
 		return res, err
 	}
-	defer teardownWorktree(repoRoot, intPath) // keep the branch, drop the worktree
+	defer func() {
+		teardownWorktree(repoRoot, tmpPath)
+		_, _ = git(repoRoot, "branch", "-D", tmpBranch)
+	}()
 
 	for _, jb := range jobs {
-		// R4: reject changes that touch denied/reserved/out-of-scope before merging.
-		if v := diffClassify(repoRoot, mainHEAD, jb.Branch, jb.Scope, rsv, ignorecase); len(v) > 0 {
+		// R4: reject denied/reserved/out-of-scope changes before merging. The diff
+		// base is the job branch's merge-base with HEAD (not HEAD itself), so main
+		// moving forward isn't miscounted as the job's changes (review finding 4).
+		base := mergeBase(repoRoot, mainHEAD, jb.Branch)
+		if v := diffClassify(repoRoot, base, jb.Branch, jb.Scope, rsv, ignorecase); len(v) > 0 {
 			res.DeniedJob = jb.JobID
 			res.DeniedPaths = v
 			return res, nil
 		}
-		if out, err := git(intPath, "merge", "--no-edit", jb.Branch); err != nil {
-			_, _ = git(intPath, "merge", "--abort") // never leave a half-merged tree (N17)
+		if out, err := git(tmpPath, "merge", "--no-edit", jb.Branch); err != nil {
+			_, _ = git(tmpPath, "merge", "--abort") // never leave a half-merged tree (N17)
 			res.ConflictJob = jb.JobID
 			_ = out
 			return res, nil
 		}
 		res.Merged = append(res.Merged, jb.JobID)
 	}
+	// Success only: atomically promote tmp onto the official delivery branch.
+	if out, err := git(repoRoot, "branch", "-f", intBranch, tmpBranch); err != nil {
+		return res, fmt.Errorf("promote integration branch: %s", out)
+	}
 	return res, nil
+}
+
+func mergeBase(repoRoot, a, b string) string {
+	if out, err := git(repoRoot, "merge-base", a, b); err == nil && out != "" {
+		return out
+	}
+	return a // fallback to HEAD if no common ancestor
 }
 
 // diffClassify returns every non-Allow verdict for the changes a branch
