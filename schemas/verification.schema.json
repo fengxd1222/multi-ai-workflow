@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/verification.schema.json",
+  "title": "Harness Verification Record",
+  "description": "tasks/<tid>/verification.json（rev3 §13）。每条 check 由 CLI 实跑（非 worker 自报）。task 级至少一条 required，否则 completion 条2 判 false（堵 vacuous-true N23）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["checks"],
+  "properties": {
+    "level": { "type": "string", "enum": ["job", "task"] },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "result", "required"],
+        "properties": {
+          "level": { "type": "string", "enum": ["job", "task"] },
+          "command": { "type": "string", "minLength": 1, "description": "CLI 实跑的命令。" },
+          "result": { "type": "string", "enum": ["passed", "failed", "not-run"] },
+          "exit_code": { "type": ["integer", "null"] },
+          "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+          "log_ref": { "type": ["string", "null"], "description": "artifacts/<jid>/verify/*.json 路径。" },
+          "required": {
+            "type": "boolean",
+            "default": true,
+            "description": "缺省=true（fail-safe N23）。"
+          }
+        }
+      }
+    }
+  }
+}

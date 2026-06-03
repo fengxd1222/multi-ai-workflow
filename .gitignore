@@ -1,0 +1,10 @@
+# harness runtime state (never commit)
+.harness/
+.worktrees/
+
+# Go build output
+/harness
+/bin/
+*.test
+*.out
+coverage.*

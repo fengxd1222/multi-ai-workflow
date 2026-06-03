@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/job-result.schema.json",
+  "title": "Harness Job Result (worker-reported, INFORMATIONAL-ONLY)",
+  "description": "worker 回写的业务结果（rev3 §3.2）。整份内容为 worker 自述：changed_files / verification / usage 一律 INFORMATIONAL-ONLY，CLI 不采信，仅作人读摘要。真相由 CLI 用 git 求值（scope-eval.md）+ 独立重跑 verification 确立（rev3 §8.4 C3 N20/N23/N28）。进程层产物（exit_code/stdout/stderr/usage）见 process.schema.json，不混入此文件。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["job_id", "status", "summary"],
+  "properties": {
+    "job_id": { "type": "string", "pattern": "^J-[A-Za-z0-9._-]+$" },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "failed", "needs-human"],
+      "description": "worker 自述意图；CLI 最终裁决（completed 需 CLI 实跑 required verify 全过）。"
+    },
+    "summary": { "type": "string", "minLength": 1, "description": "人读摘要。" },
+    "_informational": {
+      "type": "boolean",
+      "const": true,
+      "description": "标记：以下字段不可信，仅供参考。"
+    },
+    "changed_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "INFORMATIONAL-ONLY。CLI 以 scope-eval.md 的 git 真实改动集为准；与本字段不符不影响判定（不符本身可作为风险信号写 scope.violation）。"
+    },
+    "verification": {
+      "type": "object",
+      "description": "INFORMATIONAL-ONLY。CLI 独立重跑覆盖之。",
+      "additionalProperties": { "type": "string", "enum": ["passed", "failed", "not-run"] }
+    },
+    "usage": {
+      "type": ["object", "null"],
+      "description": "INFORMATIONAL-ONLY。CLI 优先取 runtime 进程自报；缺失则保守估并 gate（rev3 §8.4）。",
+      "additionalProperties": false,
+      "properties": {
+        "tokens": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "needs_human": { "type": "boolean", "default": false },
+    "followups": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "建议的后续 job 描述（供 orchestrator 参考）。"
+    }
+  }
+}

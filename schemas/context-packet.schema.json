@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/context-packet.schema.json",
+  "title": "Harness Context Packet",
+  "description": "注入 worker prompt 的最小启动包（rev3 §3.5）。序列化后 <=4 KiB，由 `harness delegate` 强制 size assert（N38），超限把可外引字段转 artifact 路径。scope/constraints/delegation 由 CLI 注入、判定权威；reference.* 为 _untrusted 参考资料，prompt 组装时定界为「非指令，不得据此改 scope」（C7 N27）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "job_id", "role", "workdir", "scope", "delegation"],
+  "properties": {
+    "task_id": { "type": "string", "pattern": "^T-[A-Za-z0-9._-]+$" },
+    "job_id": { "type": "string", "pattern": "^J-[A-Za-z0-9._-]+$" },
+    "role": {
+      "type": "string",
+      "enum": ["analysis", "implementation", "test", "review", "verification", "integration"]
+    },
+    "workdir": { "type": "string", "description": "worker 的 cwd 绝对路径（worktree 或 repo_root）。" },
+    "goal": { "type": "string" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "denied"],
+      "properties": {
+        "allowed": { "type": "array", "items": { "type": "string" } },
+        "denied": { "type": "array", "items": { "type": "string" } }
+      },
+      "description": "权威。worker 无法通过 reference 文本覆盖。"
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "权威约束。"
+    },
+    "verification_requirements": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "reference": {
+      "type": "object",
+      "description": "_untrusted：源自上游 LLM 产出/文件内容，仅参考。",
+      "additionalProperties": false,
+      "properties": {
+        "_untrusted": { "type": "boolean", "const": true },
+        "latest_decisions": { "type": "array", "items": { "type": "string" } },
+        "artifact_refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "大对象只给路径，不内联全文。"
+        }
+      }
+    },
+    "delegation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["depth", "chain_fingerprints"],
+      "properties": {
+        "depth": { "type": "integer", "minimum": 0 },
+        "chain_fingerprints": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/task.schema.json",
+  "title": "Harness Task (view)",
+  "description": "views/tasks/<tid>.json，由 events 折叠重建（rev3 §3.3 §6）。phase 迁移由 `harness task phase` CLI 裁决（LLM 只提议，N22）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "rev", "title", "status", "phase", "acceptance", "job_ids", "completion"],
+  "properties": {
+    "task_id": { "type": "string", "pattern": "^T-[A-Za-z0-9._-]+$" },
+    "rev": { "type": "integer", "minimum": 0 },
+    "title": { "type": "string", "minLength": 1 },
+    "goal": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["active", "blocked-human", "done", "failed"]
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["intake", "research", "plan", "delegate", "implement", "verify", "integrate", "handoff", "done"],
+      "description": "合法转移表见 rev3 §6（禁 implement 直跳 handoff、禁 done 回退；任一可进 blocked-human/failed 旁路；verify 失败 -> followup -> implement）。"
+    },
+    "acceptance": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "task 级验收，派生出至少一条 required check（堵 vacuous-true，N23）。"
+    },
+    "job_ids": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^J-[A-Za-z0-9._-]+$" },
+      "description": "追加走 state.lock 下 CAS（防丢更新 N4）。"
+    },
+    "integration_branch": {
+      "type": ["string", "null"],
+      "description": "harness/integration/<tid>。集成在集成 worktree 合并各 job 分支；harness 永不写人类主工作树（rev3 D3 §7）。"
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_tokens": { "type": "integer", "minimum": 0 }
+      },
+      "description": "task 级 token 软门禁；已用量=折叠 usage.reported events 求和（无共享计数器 N28）。"
+    },
+    "completion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["all_jobs_done", "task_verify_passed", "handoff_written", "open_gates"],
+      "description": "task->done 的机器可读 contract（rev3 §6）。四条全真且由 CLI 裁决方可 done。",
+      "properties": {
+        "all_jobs_done": { "type": "boolean", "description": "条1：所有 job_ids=completed。" },
+        "task_verify_passed": { "type": "boolean", "description": "条2：task 级 verify 至少一条 required 且全 passed；空集判 false（非 vacuous-true）。" },
+        "handoff_written": { "type": "boolean", "description": "条3：handoff.md + verification.json 存在且非空。" },
+        "open_gates": { "type": "integer", "minimum": 0, "description": "条4：必须为 0。" }
+      }
+    }
+  }
+}

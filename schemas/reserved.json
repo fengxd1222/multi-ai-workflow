@@ -1,0 +1,20 @@
+{
+  "_comment": "默认全局硬保留路径（rev3 §9 §12 N15/N27）。这是 harness init 写入 .harness/reserved.json 的默认值，不是 JSON Schema 而是数据。scope-eval 在 deny-check 之前先跑 reserved-check：命中即 blocked-policy(10)，连 gate 都不给。",
+  "patterns": [
+    "**/.env",
+    "**/.env.*",
+    "**/secrets/**",
+    "**/*.pem",
+    "**/*.key",
+    "**/id_rsa",
+    "**/id_ed25519",
+    "**/.npmrc",
+    "**/.netrc",
+    ".git/**",
+    ".harness/**",
+    ".worktrees/**"
+  ],
+  "pre_existing_untracked": [],
+  "pre_existing_ignored": [],
+  "reserved_by_human": []
+}

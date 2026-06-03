@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/job.schema.json",
+  "title": "Harness Job (view)",
+  "description": "views/jobs/<jid>.json，由 events 折叠重建的物化视图（rev3 §3.1）。权威真相在 events；本文件崩溃后可丢弃重建。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job_id", "task_id", "rev", "created_by", "target_runtime",
+    "role", "writes", "status", "mode",
+    "state_root", "repo_root", "workdir",
+    "scope", "delegation", "budget", "recover_count", "result_contract"
+  ],
+  "properties": {
+    "job_id": { "type": "string", "pattern": "^J-[A-Za-z0-9._-]+$" },
+    "task_id": { "type": "string", "pattern": "^T-[A-Za-z0-9._-]+$" },
+    "rev": { "type": "integer", "minimum": 0, "description": "CAS 版本，每次迁移 ++（rev3 §4）。" },
+    "created_by": { "type": "string", "description": "派发者 agent_id。" },
+    "target_runtime": { "type": "string", "enum": ["codex", "claude"] },
+    "role": {
+      "type": "string",
+      "enum": ["analysis", "implementation", "test", "review", "verification", "integration"]
+    },
+    "writes": {
+      "type": "boolean",
+      "description": "是否写文件。implementation/test/integration=true（worktree）；analysis/review/verification=false（共享主树只读）。必须与 role 一致（见 allOf）。"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["created", "running", "completed", "failed", "needs-human", "timeout"]
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["worktree", "shared"],
+      "description": "writes=true -> worktree；writes=false -> shared。"
+    },
+    "state_root": { "type": "string", "description": "主仓 .harness 绝对路径，永不随 workdir 变。" },
+    "repo_root": { "type": "string", "description": "主仓根绝对路径。" },
+    "workdir": { "type": "string", "description": "执行目录绝对路径。worktree: <repo_root>/.worktrees/<jid>；shared: <repo_root>。" },
+    "branch": {
+      "type": ["string", "null"],
+      "description": "worktree 模式分支名 job/<jid>；shared 模式 null。"
+    },
+    "base_commit": {
+      "type": ["string", "null"],
+      "description": "worktree 分支起点的真实 commit sha（非 stash）。回滚/归因基准。shared 模式 null。",
+      "pattern": "^[0-9a-f]{7,40}$"
+    },
+    "worker": {
+      "type": ["object", "null"],
+      "description": "spawn 后写入，recover 探活用（rev3 N5）。",
+      "additionalProperties": false,
+      "required": ["pid", "boot_id"],
+      "properties": {
+        "pid": { "type": "integer", "minimum": 1 },
+        "boot_id": { "type": "string", "description": "防 pid 重用；Linux /proc/sys/kernel/random/boot_id，macOS kern.boottime。" },
+        "running_since": { "type": "string", "format": "date-time" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "denied"],
+      "properties": {
+        "allowed": { "type": "array", "items": { "type": "string" }, "description": "glob，gitignore/minimatch 语义（scope-eval.md）。" },
+        "denied": { "type": "array", "items": { "type": "string" } }
+      },
+      "description": "per-job 不可变快照（rev3 N31）。reassign 仅在非 running 时生效。approve_extra_files 会 CAS 并入 allowed（N30）。"
+    },
+    "verification_requirements": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "job 级 verify 命令。由 CLI 实跑（非 worker 自报），结果以实跑 exit code 为准（rev3 §8.4 §13）。"
+    },
+    "delegation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["depth", "chain_fingerprints"],
+      "properties": {
+        "depth": { "type": "integer", "minimum": 0, "description": "委派链长度，硬上限 max_delegation_depth（默认 3）。" },
+        "chain_fingerprints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "祖先链的 task_id+归一化 goal 指纹；目标指纹重现即判环（rev3 N29）。"
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_tokens", "timeout_s"],
+      "properties": {
+        "max_tokens": { "type": "integer", "minimum": 0, "description": "软门禁：只阻止下次派发，不硬截已 running（rev3 §8.4）。" },
+        "timeout_s": { "type": "integer", "minimum": 1, "description": "adapter 看门狗到点 SIGKILL 子进程组（rev3 §5 N3）。" }
+      }
+    },
+    "recover_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "被 recover 重派次数；超 max_recover_retries(=2) -> needs-human，杜绝僵死无限重派（rev3 N3）。"
+    },
+    "result_contract": { "type": "string", "const": "job-result.schema.json" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "role": { "enum": ["implementation", "test", "integration"] } } },
+      "then": { "properties": { "writes": { "const": true }, "mode": { "const": "worktree" } } }
+    },
+    {
+      "if": { "properties": { "role": { "enum": ["analysis", "review", "verification"] } } },
+      "then": { "properties": { "writes": { "const": false }, "mode": { "const": "shared" } } }
+    }
+  ]
+}

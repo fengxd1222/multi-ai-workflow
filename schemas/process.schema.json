@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/process.schema.json",
+  "title": "Harness Process Record",
+  "description": "artifacts/<jid>/process.json（rev3 §8）。进程执行层产物，与 job-result（业务层）严格分离。recover 用 final_json_ok 判断能否从 final.json 补 result（N36）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["pid", "exit_code", "started_at", "ended_at"],
+  "properties": {
+    "pid": { "type": "integer", "minimum": 1 },
+    "boot_id": { "type": "string" },
+    "exit_code": { "type": ["integer", "null"], "description": "null=被看门狗 SIGKILL 或仍在跑。" },
+    "killed_by_watchdog": { "type": "boolean", "default": false, "description": "true=超 timeout_s 被 adapter SIGKILL（N3）。" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "ended_at": { "type": ["string", "null"], "format": "date-time" },
+    "duration_ms": { "type": ["integer", "null"], "minimum": 0 },
+    "final_json_ok": {
+      "type": "boolean",
+      "description": "final.json 末尾为完整可 parse JSON。false -> 判 runtime-exec-failed(40) 而非 result-invalid(22)（N36）。"
+    },
+    "reported_tokens": { "type": ["integer", "null"], "description": "runtime 自报 usage；null=缺失，CLI 保守估并 gate（N28）。" }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/event.schema.json",
+  "title": "Harness Event",
+  "description": "events/<actor>.jsonl 中的一行。events 是单一真相源（rev3 §4）；views/* 由折叠 events 重建。一行一个对象，UTF-8，以 \\n 定界。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_id", "actor", "ts", "type", "payload"],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "description": "ULID。同一 actor 内单调递增；全序排序键为 (ts, actor, event_id)，event_id 兜底（rev3 N13）。",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "actor": {
+      "type": "string",
+      "description": "产生该事件的 agent_id 或 'cli'/'orchestrator'。",
+      "minLength": 1
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339，毫秒精度。"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "session.started",
+        "session.ended",
+        "task.created",
+        "task.phase_changed",
+        "task.status_changed",
+        "job.created",
+        "job.status_changed",
+        "worktree.created",
+        "worktree.removed",
+        "usage.reported",
+        "verify.completed",
+        "scope.violation",
+        "policy.violation",
+        "gate.opened",
+        "gate.resolved",
+        "integrate.completed",
+        "handoff.written",
+        "recover.ran"
+      ]
+    },
+    "caused_by": {
+      "type": ["string", "null"],
+      "description": "上游 event_id，显式因果链。无则 null。",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "cas": {
+      "type": "object",
+      "description": "状态迁移事件的 compare-and-swap 凭据（rev3 §4 N2/N4）。在 state.lock 下校验 entity.rev==expect_rev 才允许写。",
+      "additionalProperties": false,
+      "required": ["entity", "expect_rev", "new_rev"],
+      "properties": {
+        "entity": { "type": "string", "description": "如 job:J-002 / task:T-001 / gate:G-001。" },
+        "expect_rev": { "type": "integer", "minimum": 0 },
+        "new_rev": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "description": "按 type 而定的载荷。约定：job.status_changed -> {job_id, from, to, reason?}; task.phase_changed -> {task_id, from, to}; usage.reported -> {task_id, job_id, tokens, estimated:boolean}; scope.violation -> {job_id, paths:[...], rule}; gate.opened -> {gate_id, job_id, reason}; worktree.created -> {job_id, path, branch, base_commit}。"
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "enum": ["job.status_changed", "task.phase_changed", "task.status_changed"] } } },
+      "then": { "required": ["cas"], "description": "状态迁移必须携带 cas。" }
+    }
+  ]
+}

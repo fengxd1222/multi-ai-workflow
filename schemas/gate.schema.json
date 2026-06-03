@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/gate.schema.json",
+  "title": "Harness Human Gate (view)",
+  "description": "views/gates/<gid>.json（rev3 §14）。needs-human 必落 gate。approve/reject 有副作用与次数上限，非死状态。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["gate_id", "task_id", "job_id", "reason", "options", "status", "created_at"],
+  "properties": {
+    "gate_id": { "type": "string", "pattern": "^G-[A-Za-z0-9._-]+$" },
+    "task_id": { "type": "string", "pattern": "^T-[A-Za-z0-9._-]+$" },
+    "job_id": { "type": "string", "pattern": "^J-[A-Za-z0-9._-]+$" },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "如 scope-violation / merge-conflict / irreversible-command / budget-unaccountable / new-dependency。"
+    },
+    "affected_files": { "type": "array", "items": { "type": "string" } },
+    "options": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": ["approve_extra_files", "reject_and_rollback", "reassign_scope"]
+      }
+    },
+    "recommended": {
+      "type": "string",
+      "enum": ["approve_extra_files", "reject_and_rollback", "reassign_scope"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "approved", "rejected"]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "resolution": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "option": { "type": "string", "enum": ["approve_extra_files", "reject_and_rollback", "reassign_scope"] },
+        "resolved_at": { "type": "string", "format": "date-time" },
+        "by": { "type": "string", "description": "人类操作者标识。" },
+        "note": { "type": "string" }
+      },
+      "description": "approve_extra_files -> 把 affected_files 并入该 job scope.allowed（CAS 持久化 N30）；reject_and_rollback -> 触发 scope-eval 回滚 + 重派（计数上限 N30）；reassign_scope -> 仅 job 非 running 时改 scope（N31）。"
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "同类 gate reject 重派计数；超上限 -> job failed/blocked-human（防活/死锁 N30）。"
+    }
+  }
+}

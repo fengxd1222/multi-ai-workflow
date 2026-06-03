@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harness.local/schemas/session.schema.json",
+  "title": "Harness Session (view)",
+  "description": "sessions/<sid>/session.json（rev3 §2）。active-task 为 per-session（不再全局单槽 N33）。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["session_id", "protocol_version", "repo_root", "state_root", "created_at", "status"],
+  "properties": {
+    "session_id": { "type": "string", "pattern": "^S-[A-Za-z0-9._-]+$" },
+    "protocol_version": { "type": "string", "const": "1.0" },
+    "repo_root": { "type": "string" },
+    "state_root": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["active", "ended"] },
+    "orchestrator": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "agent_id": { "type": "string" },
+        "runtime": { "type": "string", "enum": ["codex", "claude"] }
+      }
+    },
+    "active_task_id": {
+      "type": ["string", "null"],
+      "pattern": "^T-[A-Za-z0-9._-]+$",
+      "description": "本会话当前 task；存于 sessions/<sid>/active-task.json，session-start/task-stop 以本 sid 取（N33）。"
+    }
+  }
+}
