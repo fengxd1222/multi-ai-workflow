@@ -143,6 +143,52 @@ func (e *Engine) jobTransition(actor, jobID string, expectRev int, to string, pa
 	return *j, nil
 }
 
+// RecoverJob resets a stale running job: it bumps recover_count and resets to
+// created for re-dispatch, or escalates to needs-human once the retry cap is
+// exceeded (rev3 §15 N3). Privileged — bypasses the normal transition table
+// since only `harness recover` calls it. No-op if the job is no longer running.
+func (e *Engine) RecoverJob(actor, jobID string, maxRetries int) (model.Job, error) {
+	lk, err := store.AcquireLock(e.L.StateLock())
+	if err != nil {
+		return model.Job{}, err
+	}
+	defer lk.Release()
+
+	st, err := e.fold()
+	if err != nil {
+		return model.Job{}, err
+	}
+	j := st.Jobs[jobID]
+	if j == nil {
+		return model.Job{}, ErrNotFound
+	}
+	if j.Status != model.JobRunning {
+		return *j, nil // already terminal/created; nothing to recover
+	}
+
+	newCount := j.RecoverCount + 1
+	to := model.JobCreated
+	if newCount > maxRetries {
+		to = model.JobNeedsHuman
+	}
+	newRev := j.Rev + 1
+	rc := newCount
+	payload, _ := json.Marshal(statusChange{
+		JobID: jobID, From: j.Status, To: to, Reason: "recover", RecoverCount: &rc,
+	})
+	cas := &model.CAS{Entity: "job:" + jobID, ExpectRev: j.Rev, NewRev: newRev}
+	if err := event.AppendRaw(e.L, e.SID, e.newEvent(actor, model.EvJobStatusChanged, cas, payload)); err != nil {
+		return *j, err
+	}
+	j.Status = to
+	j.Rev = newRev
+	j.RecoverCount = newCount
+	if err := store.WriteAtomicJSON(e.L.JobView(e.SID, jobID), j); err != nil {
+		return *j, err
+	}
+	return *j, nil
+}
+
 // CreateTask appends task.created and writes the view.
 func (e *Engine) CreateTask(actor string, t model.Task) error {
 	lk, err := store.AcquireLock(e.L.StateLock())

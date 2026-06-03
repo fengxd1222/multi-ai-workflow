@@ -23,10 +23,11 @@ type statusChange struct {
 	From       string        `json:"from"`
 	To         string        `json:"to"`
 	Reason     string        `json:"reason,omitempty"`
-	Worker     *model.Worker `json:"worker,omitempty"`
-	Workdir    string        `json:"workdir,omitempty"`
-	Branch     string        `json:"branch,omitempty"`
-	BaseCommit string        `json:"base_commit,omitempty"`
+	Worker       *model.Worker `json:"worker,omitempty"`
+	Workdir      string        `json:"workdir,omitempty"`
+	Branch       string        `json:"branch,omitempty"`
+	BaseCommit   string        `json:"base_commit,omitempty"`
+	RecoverCount *int          `json:"recover_count,omitempty"`
 }
 
 // Reduce replays events in order and reconstructs entity state. This is the
@@ -70,6 +71,9 @@ func Reduce(evs []model.Event) (*State, error) {
 			if p.BaseCommit != "" {
 				c := p.BaseCommit
 				j.BaseCommit = &c
+			}
+			if p.RecoverCount != nil {
+				j.RecoverCount = *p.RecoverCount
 			}
 
 		case model.EvTaskCreated:

@@ -21,7 +21,7 @@ func TestClosedLoop(t *testing.T) {
 	dir, sid, root := initSessionWithCommit(t)
 	l := store.NewLayout(root)
 
-	tid, err := TaskCreate(dir, sid, "auth refactor", []string{"api unchanged"})
+	tid, err := TaskCreate(dir, sid, "auth refactor", []string{"api unchanged"}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

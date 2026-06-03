@@ -46,7 +46,8 @@ func run(args []string) int {
 	case "task":
 		if len(args) >= 2 && args[1] == "create" {
 			_, err := cli.TaskCreate(cwd, flagValue(args[2:], "--session"),
-				flagValue(args[2:], "--title"), flagValues(args[2:], "--accept"))
+				flagValue(args[2:], "--title"), flagValues(args[2:], "--accept"),
+				atoi(flagValue(args[2:], "--budget")))
 			return report(err)
 		}
 		if len(args) >= 2 && args[1] == "phase" {

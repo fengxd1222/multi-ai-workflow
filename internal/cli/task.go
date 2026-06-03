@@ -8,8 +8,8 @@ import (
 	"github.com/fengxudong/harness/internal/store"
 )
 
-// TaskCreate creates a task (rev3 §16).
-func TaskCreate(dir, sid, title string, accept []string) (string, error) {
+// TaskCreate creates a task (rev3 §16). budget=0 means no token cap.
+func TaskCreate(dir, sid, title string, accept []string, budget int) (string, error) {
 	_, l, sid, err := sessionLayout(dir, sid)
 	if err != nil {
 		return "", err
@@ -24,6 +24,9 @@ func TaskCreate(dir, sid, title string, accept []string) (string, error) {
 	t := model.Task{
 		TaskID: tid, Title: title, Status: model.TaskActive, Phase: "intake",
 		Acceptance: accept, JobIDs: []string{},
+	}
+	if budget > 0 {
+		t.Budget = &model.Budget{MaxTokens: budget}
 	}
 	if err := state.New(l, sid).CreateTask("orchestrator", t); err != nil {
 		return "", err

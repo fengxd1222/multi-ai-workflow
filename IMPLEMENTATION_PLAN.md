@@ -119,7 +119,29 @@ push 模型 · worktree-per-write-job · events 单一真相 · 信任边界(wor
 
 **Status**: Complete
 
-## Stage M6（未开始）
+## Stage M6: recover 全套 + 失控防护（进行中）
+
+**Goal**: recover 从 replay-only 升级为全套：stale 探活(pid/boot_id 或 timeout+grace)、写 job 恢复=丢弃 worktree、孤儿 worktree 扫描清理、recover_count 熔断→needs-human。失控防护：委派环路检测(祖先链指纹)、task token budget 软门禁。
+
+**模块**:
+- `state`: RecoverJob(privileged running→created/needs-human + recover_count) + reducer recover_count。
+- `cli`: recover 扩展(stale 判定/丢 worktree/孤儿扫描/熔断) · live(processAlive) · delegate 环路+budget · sumTaskUsage · TaskCreate budget。
+
+**Success Criteria**:
+- [x] stale 死 job(进程不存活/boot 不符)→丢 worktree + 重置 created；活 job(本进程 pid+boot)不动(N5)。
+- [x] recover_count 超 max(=2)→needs-human，不再重派(N3)。
+- [x] 孤儿 worktree(git 注册但无活 running job)被清理 + branch -D(N9)；二进制冒烟确认。
+- [x] 委派环路：祖先链已含目标指纹→ExitDelegationLoop(N29)。
+- [x] task budget：累计 usage(折叠 usage.reported 事件) ≥ 预算→delegate 拒绝(ExitBudgetExceeded, N28 软门禁)。
+- [x] 覆盖率 state 80.8 / cli 83.5，`-race` 干净。
+
+**Status**: Complete
+
+---
+
+## v1 完成 ✅
+
+M1–M6 全部 Complete。11 个 internal 包全部测试绿、覆盖率 ≥80%、`go vet` 干净、`-race` 干净、二进制端到端冒烟通过。一个 task 从 create→delegate→run→verify→integrate→handoff 闭环跑通，崩溃恢复(stale 探活/丢 worktree/孤儿清理/熔断)就位。
 - M3: 真实 adapter(codex/claude) + worktree 写隔离 + result 求真(§8.4) + 看门狗 + schema 修复回路。
 - M4: hooks(path guard/迁移点 diff review/task-stop 拆分) + 危险命令硬 deny + 注入隔离。
 - M5: verify 分层(CLI 实跑) + integrate(集成 worktree merge+abort → harness/integration 分支) + handoff + gate。

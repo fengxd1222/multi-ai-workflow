@@ -45,10 +45,10 @@ func TestVerifyTask_Fails(t *testing.T) {
 
 func TestTask_CreateAndPhase(t *testing.T) {
 	dir, sid, _ := initSessionWithCommit(t)
-	if _, err := TaskCreate(dir, sid, "", nil); CodeOf(err) != ExitUsage {
+	if _, err := TaskCreate(dir, sid, "", nil, 0); CodeOf(err) != ExitUsage {
 		t.Fatalf("missing title should be ExitUsage, got %v", err)
 	}
-	tid, err := TaskCreate(dir, sid, "x", nil)
+	tid, err := TaskCreate(dir, sid, "x", nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

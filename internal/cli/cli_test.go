@@ -152,7 +152,11 @@ func TestRecover_RebuildsViews(t *testing.T) {
 	if err := eng.CreateJob("codex", j); err != nil {
 		t.Fatal(err)
 	}
+	// drive to a terminal state so recover's stale reconciliation leaves it alone
 	if _, err := eng.TransitionJob("claude", "J-1", 1, model.JobRunning); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := eng.TransitionJob("claude", "J-1", 2, model.JobCompleted); err != nil {
 		t.Fatal(err)
 	}
 
@@ -167,7 +171,7 @@ func TestRecover_RebuildsViews(t *testing.T) {
 	if err := store.ReadJSON(l.JobView(sid, "J-1"), &view); err != nil {
 		t.Fatalf("view not rebuilt: %v", err)
 	}
-	if view.Status != model.JobRunning || view.Rev != 2 {
+	if view.Status != model.JobCompleted || view.Rev != 3 {
 		t.Fatalf("rebuilt view wrong: %+v", view)
 	}
 }
