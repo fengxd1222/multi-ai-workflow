@@ -105,10 +105,12 @@ func ComputeContract(l store.Layout, sid, taskID string) (Contract, error) {
 		return Contract{}, coded(ExitUsage, "task %s not found", taskID)
 	}
 
-	c := Contract{AllJobsDone: true}
-	for _, jid := range task.JobIDs {
-		var j model.Job
-		if err := store.ReadJSON(l.JobView(sid, jid), &j); err != nil || j.Status != model.JobCompleted {
+	_ = task
+	c := Contract{}
+	jobs := jobsForTask(l, sid, taskID)
+	c.AllJobsDone = len(jobs) > 0
+	for _, j := range jobs {
+		if j.Status != model.JobCompleted {
 			c.AllJobsDone = false
 		}
 	}
@@ -124,6 +126,26 @@ func ComputeContract(l store.Layout, sid, taskID string) (Contract, error) {
 
 	c.OpenGates = countOpenGates(l, sid, taskID)
 	return c, nil
+}
+
+// jobsForTask returns every job view whose TaskID matches (the authoritative job
+// set is derived, not stored on the task — rev3 §6).
+func jobsForTask(l store.Layout, sid, taskID string) []model.Job {
+	entries, err := os.ReadDir(l.JobsDir(sid))
+	if err != nil {
+		return nil
+	}
+	var jobs []model.Job
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		var j model.Job
+		if err := store.ReadJSON(filepath.Join(l.JobsDir(sid), e.Name()), &j); err == nil && j.TaskID == taskID {
+			jobs = append(jobs, j)
+		}
+	}
+	return jobs
 }
 
 func countOpenGates(l store.Layout, sid, taskID string) int {

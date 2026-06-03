@@ -97,7 +97,29 @@ push 模型 · worktree-per-write-job · events 单一真相 · 信任边界(wor
 
 **Status**: Complete
 
-## Stage M5–M6（未开始）
+## Stage M5: 闭环 delegate→verify→integrate→handoff + gate（进行中）
+
+**Goal**: 一个 task 从 create 到 handoff/交付分支跑通闭环。delegate 建 job；verify 分层 CLI 实跑写 verification.json；integrate 在集成 worktree 合并 job 分支→harness/integration/<tid>（merge 前 denied 复核 R4，冲突 --abort+gate N17）；handoff 渲染；gate 事件溯源 + list/approve/reject（approve_extra_files 扩 scope N30）。
+
+**模块**:
+- `state`/`model`: gate 事件溯源(gate.opened/resolved + Gates 视图) · ExtendJobScope(job.scope_extended)。
+- `internal/verify`: Run(workdir, cmds) → model.Verification + allPassed。
+- `internal/integrate`: 集成 worktree + 逐 job 分支 merge + denied 复核 + --abort+gate。
+- `cli`: delegate · verify · integrate · handoff · gate list/show/approve/reject；ComputeContract 改为按 TaskID 扫 job 视图。
+
+**Success Criteria**:
+- [x] delegate 建 job(role→writes/mode)，adapter 可消费；委派深度上限→ExitDelegationLoop。
+- [x] verify --task 实跑命令写 verification.json(verify 包)，contract 条2 据此判定；空集非 vacuous-true。
+- [x] integrate：无冲突合并 job 分支→harness/integration/<tid>；denied 改动→拒绝 merge+gate；冲突→--abort(主树不留半合并)+gate。
+- [x] handoff 渲染 handoff.md(jobs/验证/交付分支)。
+- [x] gate：open/resolve 事件溯源(reducer Gates)；approve_extra_files 扩 job scope CAS 持久化(N30)；reject 记录。
+- [x] adapter 在 worker 成功后把 worktree 改动 commit 到 job 分支(供 integrate 合并)。
+- [x] 闭环集成测试：create→delegate→run(Mock completed)→verify→integrate→handoff→contract satisfied→交付分支含改动。
+- [x] 覆盖率 cli 82.4 / verify 96 / integrate 87.5 / state 80.5，`-race` 干净；二进制端到端冒烟通过。
+
+**Status**: Complete
+
+## Stage M6（未开始）
 - M3: 真实 adapter(codex/claude) + worktree 写隔离 + result 求真(§8.4) + 看门狗 + schema 修复回路。
 - M4: hooks(path guard/迁移点 diff review/task-stop 拆分) + 危险命令硬 deny + 注入隔离。
 - M5: verify 分层(CLI 实跑) + integrate(集成 worktree merge+abort → harness/integration 分支) + handoff + gate。

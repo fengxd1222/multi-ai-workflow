@@ -36,6 +36,7 @@ const (
 	EvTaskStatusChange = "task.status_changed"
 	EvJobCreated       = "job.created"
 	EvJobStatusChanged = "job.status_changed"
+	EvJobScopeExtended = "job.scope_extended"
 	EvWorktreeCreated  = "worktree.created"
 	EvWorktreeRemoved  = "worktree.removed"
 	EvUsageReported    = "usage.reported"

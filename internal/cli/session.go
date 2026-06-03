@@ -1,12 +1,9 @@
 package cli
 
 import (
-	cryptorand "crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/fengxudong/harness/internal/event"
 	"github.com/fengxudong/harness/internal/model"
@@ -74,11 +71,7 @@ func SessionStart(dir string) (string, error) {
 	return sid, nil
 }
 
-func newSessionID() string {
-	var b [2]byte
-	_, _ = cryptorand.Read(b[:])
-	return fmt.Sprintf("S-%s-%s", time.Now().UTC().Format("20060102-150405"), hex.EncodeToString(b[:]))
-}
+func newSessionID() string { return genID("S") }
 
 func appendSessionEvent(l store.Layout, sid, actor, typ string, payload any) error {
 	p, err := json.Marshal(payload)

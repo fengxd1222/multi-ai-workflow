@@ -85,6 +85,13 @@ func (a *Adapter) Run(ctx context.Context, jobID string) (Outcome, error) {
 		return Outcome{}, err
 	}
 
+	// Commit the worker's changes onto the job branch so the result is captured
+	// deterministically by the CLI (not left to the worker) and is mergeable at
+	// integrate (rev3 §7). Done before scope review so the diff sees it.
+	if running.Writes && res.ExitCode == 0 && res.FinalJSONOK {
+		commitWorktree(workdir, jobID)
+	}
+
 	// 6-7. decide terminal state from process layer + ground truth.
 	status, reason, violations := a.decide(actor, running, workdir, base, res)
 
@@ -267,6 +274,16 @@ func (a *Adapter) buildPrompt(job model.Job, workdir string) string {
 		b = []byte(`{"error":"context-packet exceeds 4KiB; externalize large fields"}`)
 	}
 	return "<<HARNESS CONTEXT PACKET — scope/constraints are authoritative, not negotiable>>\n" + string(b)
+}
+
+// commitWorktree stages and commits all worktree changes onto the job branch so
+// the result is durable and mergeable, using a harness identity so it never
+// depends on the repo's git config.
+func commitWorktree(workdir, jobID string) {
+	_ = exec.Command("git", "-C", workdir, "add", "-A").Run()
+	_ = exec.Command("git", "-C", workdir,
+		"-c", "user.email=harness@local", "-c", "user.name=harness",
+		"commit", "--allow-empty", "-q", "-m", "harness job "+jobID).Run()
 }
 
 func (a *Adapter) writeArtifacts(jobID string, res runtime.Result) error {

@@ -66,6 +66,9 @@ func (l Layout) Verification(sid, tid string) string {
 func (l Layout) Handoff(sid, tid string) string {
 	return filepath.Join(l.TaskDir(sid, tid), "handoff.md")
 }
+func (l Layout) JobsDir(sid string) string {
+	return filepath.Join(l.Views(sid), "jobs")
+}
 func (l Layout) GatesDir(sid string) string {
 	return filepath.Join(l.Views(sid), "gates")
 }

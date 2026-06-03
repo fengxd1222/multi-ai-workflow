@@ -216,6 +216,87 @@ func (e *Engine) TransitionTaskPhase(actor, taskID string, expectRev int, to str
 	return *t, nil
 }
 
+// OpenGate records a needs-human gate (rev3 §14). Appends gate.opened and
+// writes the gate view.
+func (e *Engine) OpenGate(actor string, g model.Gate) error {
+	lk, err := store.AcquireLock(e.L.StateLock())
+	if err != nil {
+		return err
+	}
+	defer lk.Release()
+
+	payload, err := json.Marshal(g)
+	if err != nil {
+		return err
+	}
+	if err := event.AppendRaw(e.L, e.SID, e.newEvent(actor, model.EvGateOpened, nil, payload)); err != nil {
+		return err
+	}
+	return store.WriteAtomicJSON(e.L.GateView(e.SID, g.GateID), g)
+}
+
+// ResolveGate transitions a gate to approved/rejected with a resolution.
+func (e *Engine) ResolveGate(actor, gateID, status string, res *model.Resolution) (model.Gate, error) {
+	lk, err := store.AcquireLock(e.L.StateLock())
+	if err != nil {
+		return model.Gate{}, err
+	}
+	defer lk.Release()
+
+	st, err := e.fold()
+	if err != nil {
+		return model.Gate{}, err
+	}
+	g := st.Gates[gateID]
+	if g == nil {
+		return model.Gate{}, ErrNotFound
+	}
+	payload, _ := json.Marshal(map[string]any{"gate_id": gateID, "status": status, "resolution": res})
+	if err := event.AppendRaw(e.L, e.SID, e.newEvent(actor, model.EvGateResolved, nil, payload)); err != nil {
+		return *g, err
+	}
+	g.Status = status
+	g.Resolution = res
+	if err := store.WriteAtomicJSON(e.L.GateView(e.SID, gateID), g); err != nil {
+		return *g, err
+	}
+	return *g, nil
+}
+
+// ExtendJobScope appends globs to a job's scope.allowed (CAS) so an
+// approve_extra_files gate decision persists (rev3 §14 N30).
+func (e *Engine) ExtendJobScope(actor, jobID string, expectRev int, addAllowed []string) (model.Job, error) {
+	lk, err := store.AcquireLock(e.L.StateLock())
+	if err != nil {
+		return model.Job{}, err
+	}
+	defer lk.Release()
+
+	st, err := e.fold()
+	if err != nil {
+		return model.Job{}, err
+	}
+	j := st.Jobs[jobID]
+	if j == nil {
+		return model.Job{}, ErrNotFound
+	}
+	if j.Rev != expectRev {
+		return *j, ErrCASRetry
+	}
+	newRev := j.Rev + 1
+	payload, _ := json.Marshal(map[string]any{"job_id": jobID, "add_allowed": addAllowed})
+	cas := &model.CAS{Entity: "job:" + jobID, ExpectRev: expectRev, NewRev: newRev}
+	if err := event.AppendRaw(e.L, e.SID, e.newEvent(actor, model.EvJobScopeExtended, cas, payload)); err != nil {
+		return *j, err
+	}
+	j.Scope.Allowed = append(j.Scope.Allowed, addAllowed...)
+	j.Rev = newRev
+	if err := store.WriteAtomicJSON(e.L.JobView(e.SID, jobID), j); err != nil {
+		return *j, err
+	}
+	return *j, nil
+}
+
 // RebuildViews replays all events and rewrites every entity view. Idempotent;
 // used by `harness recover` (rev3 §15). Equal to incremental views because both
 // derive from Reduce.
@@ -237,6 +318,11 @@ func (e *Engine) RebuildViews() (jobs, tasks int, err error) {
 	}
 	for _, t := range st.Tasks {
 		if err := store.WriteAtomicJSON(e.L.TaskView(e.SID, t.TaskID), t); err != nil {
+			return 0, 0, err
+		}
+	}
+	for _, g := range st.Gates {
+		if err := store.WriteAtomicJSON(e.L.GateView(e.SID, g.GateID), g); err != nil {
 			return 0, 0, err
 		}
 	}

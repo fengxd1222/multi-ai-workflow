@@ -11,6 +11,7 @@ import (
 type State struct {
 	Jobs  map[string]*model.Job
 	Tasks map[string]*model.Task
+	Gates map[string]*model.Gate
 }
 
 // statusChange is the payload shape for *.status_changed / task.phase_changed.
@@ -33,7 +34,7 @@ type statusChange struct {
 // in-line CAS check and full view rebuild, so incremental == rebuilt by
 // construction (rev3 §15, N11).
 func Reduce(evs []model.Event) (*State, error) {
-	s := &State{Jobs: map[string]*model.Job{}, Tasks: map[string]*model.Task{}}
+	s := &State{Jobs: map[string]*model.Job{}, Tasks: map[string]*model.Task{}, Gates: map[string]*model.Gate{}}
 	for _, ev := range evs {
 		switch ev.Type {
 		case model.EvJobCreated:
@@ -95,9 +96,49 @@ func Reduce(evs []model.Event) (*State, error) {
 			if ev.CAS != nil {
 				t.Rev = ev.CAS.NewRev
 			}
+
+		case model.EvJobScopeExtended:
+			var p struct {
+				JobID      string   `json:"job_id"`
+				AddAllowed []string `json:"add_allowed"`
+			}
+			if err := json.Unmarshal(ev.Payload, &p); err != nil {
+				return nil, err
+			}
+			j := s.Jobs[p.JobID]
+			if j == nil {
+				return nil, fmt.Errorf("job.scope_extended for unknown job %s", p.JobID)
+			}
+			j.Scope.Allowed = append(j.Scope.Allowed, p.AddAllowed...)
+			if ev.CAS != nil {
+				j.Rev = ev.CAS.NewRev
+			}
+
+		case model.EvGateOpened:
+			var g model.Gate
+			if err := json.Unmarshal(ev.Payload, &g); err != nil {
+				return nil, fmt.Errorf("reduce gate.opened: %w", err)
+			}
+			s.Gates[g.GateID] = &g
+
+		case model.EvGateResolved:
+			var p struct {
+				GateID     string            `json:"gate_id"`
+				Status     string            `json:"status"`
+				Resolution *model.Resolution `json:"resolution"`
+			}
+			if err := json.Unmarshal(ev.Payload, &p); err != nil {
+				return nil, err
+			}
+			g := s.Gates[p.GateID]
+			if g == nil {
+				return nil, fmt.Errorf("gate.resolved for unknown gate %s", p.GateID)
+			}
+			g.Status = p.Status
+			g.Resolution = p.Resolution
 		}
 		// Other event types (usage.reported, scope.violation, ...) do not change
-		// reduced core entity state in M1.
+		// reduced core entity state.
 	}
 	return s, nil
 }
