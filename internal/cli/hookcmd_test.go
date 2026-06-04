@@ -57,7 +57,7 @@ func TestGuardPretool_Decisions(t *testing.T) {
 	}
 	for _, c := range cases {
 		var out bytes.Buffer
-		if err := GuardPretool(dir, sid, "J-1", "claude", strings.NewReader(c.payload), &out); err != nil {
+		if err := GuardPretool(dir, "", sid, "J-1", "claude", strings.NewReader(c.payload), &out); err != nil {
 			t.Fatalf("payload %q: %v", c.payload, err)
 		}
 		if !strings.Contains(out.String(), `"permissionDecision":"`+c.want+`"`) {
@@ -73,7 +73,7 @@ func TestGuardPosttool_DetectsViolation(t *testing.T) {
 	if err := os.WriteFile(workdir+"/package.json", []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := GuardPosttool(dir, sid, "J-1")
+	err := GuardPosttool(dir, "", sid, "J-1")
 	if CodeOf(err) != ExitBlockedPolicy {
 		t.Fatalf("want ExitBlockedPolicy for out-of-scope write, got %v", err)
 	}

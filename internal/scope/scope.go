@@ -5,7 +5,6 @@
 package scope
 
 import (
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -82,28 +81,53 @@ func Normalize(raw, baseRoot string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	abs := raw
 	if !filepath.IsAbs(abs) {
 		abs = filepath.Join(realBase, abs)
 	}
 	abs = filepath.Clean(abs)
 
-	rel, err := filepath.Rel(realBase, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", &RejectError{Reason: "escapes-base-root", Path: raw}
-	}
-
-	cur := realBase
-	for _, seg := range strings.Split(rel, string(filepath.Separator)) {
-		if seg == "." || seg == "" {
-			continue
-		}
-		cur = filepath.Join(cur, seg)
-		if fi, err := os.Lstat(cur); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+	// Resolve symlinks in abs's existing prefix. This canonicalizes system
+	// symlinks above the workdir (e.g. macOS /var -> /private/var) AND follows any
+	// worker-created symlink to its real target, so a redirect outside scope shows
+	// up as an escape (rev3 N25).
+	resolved := resolvePrefix(abs)
+	rel, err := filepath.Rel(realBase, resolved)
+	if err != nil || escapesBase(rel) {
+		// If the path was within the base before resolution but escapes after, a
+		// symlink in the path redirected it out.
+		if rawRel, e := filepath.Rel(realBase, abs); e == nil && !escapesBase(rawRel) {
 			return "", &RejectError{Reason: "symlink-in-path", Path: raw}
 		}
+		return "", &RejectError{Reason: "escapes-base-root", Path: raw}
 	}
 	return filepath.ToSlash(rel), nil
+}
+
+func escapesBase(rel string) bool {
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolvePrefix resolves symlinks in the longest existing ancestor of abs and
+// re-appends the non-existent tail (the file about to be written).
+func resolvePrefix(abs string) string {
+	p := abs
+	var tail []string
+	for {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				r = filepath.Join(r, tail[i])
+			}
+			return r
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return abs
+		}
+		tail = append(tail, filepath.Base(p))
+		p = parent
+	}
 }
 
 // Classify applies the fixed precedence reserved > denied > allowed >

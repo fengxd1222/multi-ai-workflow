@@ -2,9 +2,11 @@ package adapter
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fengxudong/harness/internal/model"
@@ -124,6 +126,23 @@ func TestAdapter_ScopeViolation_NeedsHuman(t *testing.T) {
 func TestCommitWorktree_ErrorOnNonGitDir(t *testing.T) {
 	if _, err := commitWorktree(t.TempDir(), "J-1"); err == nil {
 		t.Fatal("commitWorktree should error on a non-git dir (review finding 2)")
+	}
+}
+
+func TestClaudePreToolHook_Settings(t *testing.T) {
+	a := &Adapter{L: store.NewLayout("/repo"), SID: "S-1"}
+	s := a.claudePreToolHook("J-1")
+	if s == "" {
+		t.Skip("os.Executable() unavailable")
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(s), &m); err != nil {
+		t.Fatalf("hook settings not valid JSON: %v\n%s", err, s)
+	}
+	for _, want := range []string{"PreToolUse", "guard pretool", "--repo", "/repo", "--session S-1", "--job J-1"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("hook settings missing %q in: %s", want, s)
+		}
 	}
 }
 

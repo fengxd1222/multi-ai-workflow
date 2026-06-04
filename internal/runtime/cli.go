@@ -97,6 +97,9 @@ func claudeArgs(req Request, schemaContent string) []string {
 	if len(req.AllowedTools) > 0 {
 		args = append(args, "--allowedTools", joinCSV(req.AllowedTools))
 	}
+	if req.HookSettings != "" {
+		args = append(args, "--settings", req.HookSettings)
+	}
 	args = append(args, "--permission-mode", "acceptEdits")
 	return args
 }

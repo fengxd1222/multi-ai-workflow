@@ -13,7 +13,7 @@ import (
 func TestGuardPretool_JobNotFound(t *testing.T) {
 	dir, sid, _ := initSessionWithCommit(t)
 	var out bytes.Buffer
-	if err := GuardPretool(dir, sid, "J-none", "claude", strings.NewReader("{}"), &out); CodeOf(err) != ExitUsage {
+	if err := GuardPretool(dir, "", sid, "J-none", "claude", strings.NewReader("{}"), &out); CodeOf(err) != ExitUsage {
 		t.Fatalf("want ExitUsage, got %v", err)
 	}
 }
@@ -31,7 +31,7 @@ func TestGuardPosttool_ReadOnlyJobNoop(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := GuardPosttool(dir, sid, "J-2"); err != nil {
+	if err := GuardPosttool(dir, "", sid, "J-2"); err != nil {
 		t.Fatalf("read-only posttool should be a no-op: %v", err)
 	}
 }

@@ -102,11 +102,11 @@ func run(args []string) int {
 
 	case "guard":
 		if len(args) >= 2 && args[1] == "pretool" {
-			return report(cli.GuardPretool(cwd, flagValue(args[2:], "--session"),
+			return report(cli.GuardPretool(cwd, flagValue(args[2:], "--repo"), flagValue(args[2:], "--session"),
 				flagValue(args[2:], "--job"), flagValue(args[2:], "--runtime"), os.Stdin, os.Stdout))
 		}
 		if len(args) >= 2 && args[1] == "posttool" {
-			return report(cli.GuardPosttool(cwd, flagValue(args[2:], "--session"), flagValue(args[2:], "--job")))
+			return report(cli.GuardPosttool(cwd, flagValue(args[2:], "--repo"), flagValue(args[2:], "--session"), flagValue(args[2:], "--job")))
 		}
 		usage()
 		return cli.ExitUsage

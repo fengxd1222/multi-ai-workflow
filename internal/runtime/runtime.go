@@ -17,6 +17,7 @@ type Request struct {
 	FinalJSONPath string   // codex: --output-last-message destination
 	AllowedTools  []string // claude --allowedTools whitelist
 	Sandbox       string   // codex --sandbox mode
+	HookSettings  string   // claude --settings JSON: wires the in-session PreToolUse path guard
 	TimeoutS      int
 	RepairOf      string // non-empty on a schema-repair retry: the prior error (rev3 §8.3)
 }

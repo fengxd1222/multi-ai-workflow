@@ -156,6 +156,12 @@ func (a *Adapter) invoke(ctx context.Context, job model.Job, workdir string) (ru
 		req.AllowedTools = []string{"Read", "Grep", "Glob"}
 		req.Sandbox = "read-only"
 	}
+	// Wire the in-session PreToolUse path guard so out-of-scope writes are blocked
+	// before they happen, not just detected afterwards (rev3 §10; validated
+	// against claude 2.1.156). The hook points back at the main repo's .harness.
+	if job.TargetRuntime == model.RuntimeClaude && job.Writes {
+		req.HookSettings = a.claudePreToolHook(job.JobID)
+	}
 
 	wctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
@@ -324,6 +330,33 @@ func (a *Adapter) buildPrompt(job model.Job, workdir string) string {
 	sb.WriteString("\n<<context packet (authoritative; scope/constraints are not negotiable)>>\n")
 	sb.Write(b)
 	return sb.String()
+}
+
+// claudePreToolHook builds a claude --settings JSON that routes PreToolUse
+// events to `harness guard pretool` for this job. The command uses --repo to
+// reach the main repo's .harness even though the worker runs in a worktree
+// (rev3 N4). Empty if the harness binary path can't be resolved.
+func (a *Adapter) claudePreToolHook(jobID string) string {
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		return ""
+	}
+	cmd := fmt.Sprintf("%s guard pretool --runtime claude --repo %s --session %s --job %s",
+		shellQuote(exe), shellQuote(a.L.RepoRoot), a.SID, jobID)
+	settings := map[string]any{
+		"hooks": map[string]any{
+			"PreToolUse": []any{map[string]any{
+				"matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+				"hooks":   []any{map[string]string{"type": "command", "command": cmd}},
+			}},
+		},
+	}
+	b, _ := json.Marshal(settings)
+	return string(b)
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // commitWorktree stages and commits all worktree changes onto the job branch so

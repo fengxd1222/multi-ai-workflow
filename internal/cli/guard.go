@@ -15,8 +15,8 @@ import (
 // payload, evaluates it against the job's scope + reserved + dangerous-command
 // policy, writes the runtime's decision JSON to out, and records a violation
 // event on non-allow. Fail-safe: a payload it cannot parse is gated, not allowed.
-func GuardPretool(dir, sid, jobID, rt string, in io.Reader, out io.Writer) error {
-	l, sid, job, err := loadJob(dir, sid, jobID)
+func GuardPretool(dir, repo, sid, jobID, rt string, in io.Reader, out io.Writer) error {
+	l, sid, job, err := loadJob(dir, repo, sid, jobID)
 	if err != nil {
 		return err
 	}
@@ -44,8 +44,8 @@ func GuardPretool(dir, sid, jobID, rt string, in io.Reader, out io.Writer) error
 // it recomputes the real change set in the job's worktree and records any
 // out-of-scope writes the worker did NOT report (C3). Returns blocked-policy
 // when violations are found so a hook can react.
-func GuardPosttool(dir, sid, jobID string) error {
-	l, sid, job, err := loadJob(dir, sid, jobID)
+func GuardPosttool(dir, repo, sid, jobID string) error {
+	l, sid, job, err := loadJob(dir, repo, sid, jobID)
 	if err != nil {
 		return err
 	}
@@ -68,10 +68,16 @@ func GuardPosttool(dir, sid, jobID string) error {
 	return coded(ExitBlockedPolicy, "scope violations detected")
 }
 
-func loadJob(dir, sid, jobID string) (store.Layout, string, model.Job, error) {
-	root, err := repoRoot(dir)
-	if err != nil {
-		return store.Layout{}, "", model.Job{}, coded(ExitUsage, "%s is not inside a git repository", dir)
+// loadJob resolves a job view. repo, when non-empty, overrides the cwd-derived
+// repo root — required because hooks fire inside a worktree but the .harness
+// state lives in the main repo (rev3 N4/F4).
+func loadJob(dir, repo, sid, jobID string) (store.Layout, string, model.Job, error) {
+	root := repo
+	var err error
+	if root == "" {
+		if root, err = repoRoot(dir); err != nil {
+			return store.Layout{}, "", model.Job{}, coded(ExitUsage, "%s is not inside a git repository", dir)
+		}
 	}
 	l := store.NewLayout(root)
 	if sid == "" {

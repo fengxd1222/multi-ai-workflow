@@ -93,6 +93,21 @@ func TestNormalize_RejectsEscapeAndSymlink(t *testing.T) {
 	}
 }
 
+// TestNormalize_SystemSymlinkPrefix reproduces the macOS /var -> /private/var
+// case: the base is canonical but a tool reports the path via a symlinked
+// prefix. resolvePrefix must canonicalize it instead of falsely rejecting.
+func TestNormalize_SystemSymlinkPrefix(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := Normalize(filepath.Join(link, "src", "x.ts"), real)
+	if err != nil || rel != "src/x.ts" {
+		t.Fatalf("symlinked-prefix path: rel=%q err=%v", rel, err)
+	}
+}
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
