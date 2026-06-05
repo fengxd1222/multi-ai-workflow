@@ -2,6 +2,8 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fengxudong/harness/internal/model"
@@ -33,6 +35,58 @@ func TestDelegate_CreatesConsumableJob(t *testing.T) {
 	}
 	if j.Status != model.JobCreated || !j.Writes || j.Mode != model.ModeWorktree {
 		t.Fatalf("delegated job wrong: %+v", j)
+	}
+}
+
+func TestDelegate_FromAttachesFindings(t *testing.T) {
+	dir, sid, root := initSessionWithCommit(t)
+	l := store.NewLayout(root)
+
+	// simulate a completed analysis job that produced findings
+	if err := os.MkdirAll(filepath.Dir(l.Findings(sid, "J-analysis")), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(l.Findings(sid, "J-analysis"), []byte("# Findings\nauth uses bcrypt\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	jobID, err := Delegate(dir, sid, DelegateSpec{
+		TaskID: "T-1", Role: model.RoleImplementation, Runtime: model.RuntimeClaude,
+		Allowed: []string{"src/**"}, From: []string{"J-analysis"},
+		Context: []string{"src/auth/service.ts"}, Constraints: []string{"keep API"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var j model.Job
+	if err := store.ReadJSON(l.JobView(sid, jobID), &j); err != nil {
+		t.Fatal(err)
+	}
+	// findings ref (repo-relative) + explicit context both present
+	hasFindings := false
+	for _, r := range j.ContextRefs {
+		if strings.Contains(r, "findings/J-analysis.md") {
+			hasFindings = true
+		}
+	}
+	if !hasFindings {
+		t.Fatalf("--from did not attach findings ref: %v", j.ContextRefs)
+	}
+	if !sliceHas(j.ContextRefs, "src/auth/service.ts") {
+		t.Fatalf("--context not attached: %v", j.ContextRefs)
+	}
+	if !sliceHas(j.Constraints, "keep API") {
+		t.Fatalf("--constraint not attached: %v", j.Constraints)
+	}
+}
+
+func TestDelegate_FromMissingFindings(t *testing.T) {
+	dir, sid, _ := initSessionWithCommit(t)
+	if _, err := Delegate(dir, sid, DelegateSpec{
+		TaskID: "T-1", Role: model.RoleImplementation, Runtime: model.RuntimeClaude,
+		From: []string{"J-nope"},
+	}); CodeOf(err) != ExitUsage {
+		t.Fatalf("--from with no findings should be ExitUsage, got %v", err)
 	}
 }
 

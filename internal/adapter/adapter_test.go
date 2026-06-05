@@ -129,6 +129,55 @@ func TestCommitWorktree_ErrorOnNonGitDir(t *testing.T) {
 	}
 }
 
+func TestBuildPrompt_RichPacket(t *testing.T) {
+	a := &Adapter{L: store.NewLayout("/repo"), SID: "S-1"}
+	job := model.Job{
+		JobID: "J-1", TaskID: "T-1", Role: model.RoleImplementation, Writes: true, RepoRoot: "/repo",
+		Goal:        "refactor auth",
+		Brief:       "auth lives in src/auth; keep API stable",
+		ContextRefs: []string{".harness/sessions/S-1/findings/J-0.md", "src/auth/service.ts"},
+		Constraints: []string{"do not change error codes", "no new deps"},
+		Scope:       model.Scope{Allowed: []string{"src/auth/**"}, Denied: []string{"package.json"}},
+		VerificationRequirements: []string{"npm test -- auth"},
+	}
+	p := a.buildPrompt(job, "/repo/.worktrees/J-1")
+	for _, want := range []string{
+		"refactor auth", "auth lives in src/auth", "Read these files",
+		".harness/sessions/S-1/findings/J-0.md", "src/auth/service.ts",
+		"do not change error codes", "src/auth/**", "package.json",
+		"npm test -- auth", `"job_id":"J-1"`,
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("prompt missing %q\n---\n%s", want, p)
+		}
+	}
+}
+
+func TestBuildPrompt_ReadOnlyAsksForFindings(t *testing.T) {
+	a := &Adapter{L: store.NewLayout("/repo"), SID: "S-1"}
+	p := a.buildPrompt(model.Job{JobID: "J-1", Role: model.RoleAnalysis, Writes: false, Goal: "survey auth"}, "/repo")
+	if !strings.Contains(p, "READ-ONLY") || !strings.Contains(p, "findings") {
+		t.Fatalf("read-only prompt should ask for findings:\n%s", p)
+	}
+	if strings.Contains(p, "Write scope") {
+		t.Fatal("read-only prompt must not grant write scope")
+	}
+}
+
+func TestWriteFindings(t *testing.T) {
+	repo := gitRepo(t)
+	a, _, l := newAdapter(t, repo, runtime.Normal(goodResult(), 1))
+	job := model.Job{JobID: "J-9", TaskID: "T-1", Role: model.RoleAnalysis, Goal: "survey"}
+	a.writeFindings(job, "auth uses bcrypt; risk: token rotation")
+	data, err := os.ReadFile(l.Findings(sid, "J-9"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "auth uses bcrypt") || !strings.Contains(string(data), "J-9") {
+		t.Fatalf("findings file wrong:\n%s", data)
+	}
+}
+
 func TestClaudePreToolHook_Settings(t *testing.T) {
 	a := &Adapter{L: store.NewLayout("/repo"), SID: "S-1"}
 	s := a.claudePreToolHook("J-1")
@@ -198,7 +247,28 @@ func TestAdapter_TornFinalJSON_Failed(t *testing.T) {
 	mkJob(t, eng, repo, true, model.Scope{Allowed: []string{"src/**"}}, nil)
 	out, _ := a.Run(context.Background(), "J-1")
 	if out.Status != model.JobFailed {
-		t.Fatalf("status=%s want failed (torn)", out.Status)
+		t.Fatalf("status=%s want failed (torn, no changes)", out.Status)
+	}
+}
+
+// A torn response AFTER the worker made edits must preserve the work: commit it
+// to the job branch and route to needs-human, not discard it.
+func TestAdapter_TornButWroteFiles_NeedsHumanAndPreserved(t *testing.T) {
+	repo := gitRepo(t)
+	a, eng, _ := newAdapter(t, repo, runtime.WroteThenTorn(map[string]string{"src/new.ts": "export const x=1\n"}))
+	mkJob(t, eng, repo, true, model.Scope{Allowed: []string{"src/**"}}, nil)
+
+	out, err := a.Run(context.Background(), "J-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != model.JobNeedsHuman {
+		t.Fatalf("status=%s want needs-human (torn but dirty)", out.Status)
+	}
+	// the worker's edit must be committed on the job branch (not lost)
+	o, e := exec.Command("git", "-C", repo, "show", "job/J-1:src/new.ts").Output()
+	if e != nil || string(o) != "export const x=1\n" {
+		t.Fatalf("worker's work was lost: err=%v out=%q", e, o)
 	}
 }
 

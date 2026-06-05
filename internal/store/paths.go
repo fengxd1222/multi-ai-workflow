@@ -78,6 +78,14 @@ func (l Layout) Artifacts(sid, jid string) string {
 func (l Layout) FinalJSON(sid, jid string) string {
 	return filepath.Join(l.Artifacts(sid, jid), "final.json")
 }
+
+// Findings is the persisted, human+worker-readable output of a read-only
+// (analysis/research) job, referenced by downstream implement jobs (rev3
+// research→plan→delegate). Path is repo-relative under .harness so a worker in
+// any worktree can Read it via repo_root.
+func (l Layout) Findings(sid, jid string) string {
+	return filepath.Join(l.Session(sid), "findings", jid+".md")
+}
 func (l Layout) Trash(jid string) string {
 	return filepath.Join(l.StateRoot, ".trash", jid)
 }

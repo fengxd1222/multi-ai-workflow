@@ -56,6 +56,21 @@ func TestMock_Zombie_RespectsContextCancel(t *testing.T) {
 	}
 }
 
+func TestMock_WroteThenTorn(t *testing.T) {
+	dir := t.TempDir()
+	m := WroteThenTorn(map[string]string{"src/a.ts": "x"})
+	r, err := m.Run(context.Background(), Request{Workdir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.FinalJSONOK {
+		t.Fatal("WroteThenTorn must report a torn final.json")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "src/a.ts")); err != nil {
+		t.Fatalf("file should have been written before the torn response: %v", err)
+	}
+}
+
 func TestMock_ScopeViolation_WritesFiles(t *testing.T) {
 	dir := t.TempDir()
 	m := ScopeViolation([]byte(`{}`), map[string]string{"package.json": "{}", "infra/x.sh": "rm"})

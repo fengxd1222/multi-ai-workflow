@@ -85,3 +85,22 @@ func ScopeViolation(finalJSON []byte, files map[string]string) *Mock {
 		return Result{ExitCode: 0, FinalJSON: finalJSON, FinalJSONOK: true, ReportedTokens: intp(5)}, nil
 	}}
 }
+
+// WroteThenTorn writes files into the worktree but returns a torn final.json,
+// simulating a worker that finished its edits before a network error cut the
+// response stream. The work must be preserved (committed + needs-human), not
+// discarded.
+func WroteThenTorn(files map[string]string) *Mock {
+	return &Mock{Fn: func(_ context.Context, req Request) (Result, error) {
+		for rel, content := range files {
+			p := filepath.Join(req.Workdir, rel)
+			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+				return Result{}, err
+			}
+			if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+				return Result{}, err
+			}
+		}
+		return Result{ExitCode: 0, FinalJSON: []byte(`{"job_id":"J-1","sta`), FinalJSONOK: false}, nil
+	}}
+}

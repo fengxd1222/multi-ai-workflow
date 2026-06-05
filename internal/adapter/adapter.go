@@ -88,10 +88,12 @@ func (a *Adapter) Run(ctx context.Context, jobID string) (Outcome, error) {
 
 	// Commit the worker's changes onto the job branch so the result is captured
 	// deterministically by the CLI (not left to the worker) and is mergeable at
-	// integrate (rev3 §7). Done before scope review so the diff sees it. A commit
-	// failure means we cannot capture the worker's output on the branch, so the
-	// job must NOT be marked completed (review finding 2).
-	if running.Writes && res.ExitCode == 0 && res.FinalJSONOK {
+	// integrate (rev3 §7). Commit whenever the job is a write job and the worktree
+	// has changes — even on a torn result or non-zero exit — so a worker that
+	// finished its edits before a network error cut the stream doesn't lose its
+	// work (decide routes a dirty failure to needs-human). Done before scope
+	// review so the diff sees it.
+	if running.Writes && workdirDirty(workdir) {
 		if _, cerr := commitWorktree(workdir, jobID); cerr != nil {
 			_ = os.WriteFile(filepath.Join(a.L.Artifacts(a.SID, jobID), "commit-error.txt"), []byte(cerr.Error()), 0o644)
 			return a.finish(actor, running, model.JobNeedsHuman, "worktree-commit-failed", nil)
@@ -175,8 +177,16 @@ func (a *Adapter) decide(actor string, job model.Job, workdir, base string, res 
 	case res.KilledByWatchdog:
 		return model.JobTimeout, "watchdog timeout", nil
 	case res.ExitCode != 0:
+		// A process-layer failure (network/auth) may still have left real edits
+		// (already committed above). Don't silently discard them — gate for review.
+		if job.Writes && hasCommittedWork(workdir, base) {
+			return model.JobNeedsHuman, fmt.Sprintf("runtime-exec-failed exit=%d but worktree has changes", res.ExitCode), nil
+		}
 		return model.JobFailed, fmt.Sprintf("runtime-exec-failed exit=%d", res.ExitCode), nil
 	case !res.FinalJSONOK:
+		if job.Writes && hasCommittedWork(workdir, base) {
+			return model.JobNeedsHuman, "torn final.json but worktree has changes", nil
+		}
 		return model.JobFailed, "runtime-exec-failed torn final.json", nil
 	}
 
@@ -209,8 +219,26 @@ func (a *Adapter) decide(actor string, job model.Job, workdir, base string, res 
 		return model.JobFailed, "verify-failed", nil
 	}
 
+	// Persist a read-only (analysis/research) job's findings so downstream
+	// implement jobs can reference them as grounding (research→plan→delegate).
+	if !job.Writes && r.Summary != "" {
+		a.writeFindings(job, r.Summary)
+	}
+
 	a.recordUsage(actor, job.JobID, res.ReportedTokens, r)
 	return model.JobCompleted, "ok", nil
+}
+
+// writeFindings stores an analysis job's summary as a markdown artifact a worker
+// in any worktree can Read via the repo root.
+func (a *Adapter) writeFindings(job model.Job, summary string) {
+	path := a.L.Findings(a.SID, job.JobID)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	body := fmt.Sprintf("# Findings — %s (%s)\n\nTask: %s\nGoal: %s\n\n%s\n",
+		job.JobID, job.Role, job.TaskID, job.Goal, summary)
+	_ = os.WriteFile(path, []byte(body), 0o644)
 }
 
 func (a *Adapter) repair(actor string, job model.Job, workdir string, prior error) *model.JobResult {
@@ -302,33 +330,66 @@ func (a *Adapter) recordUsage(actor, jobID string, reported *int, r model.JobRes
 	})
 }
 
+// buildPrompt renders the context packet as an actionable work order: a brief,
+// hard constraints, files to Read first (so the worker grounds itself in real
+// code instead of cold-starting), the scope boundary, and the required output
+// contract. This is what turns "delegate a one-line goal" into "hand off a
+// scoped ticket with grounding" (rev3 research→plan→delegate / context-packet).
 func (a *Adapter) buildPrompt(job model.Job, workdir string) string {
-	packet := map[string]any{
-		"task_id": job.TaskID, "job_id": job.JobID, "role": job.Role,
-		"workdir": workdir, "scope": job.Scope,
-		"verification_requirements": job.VerificationRequirements,
-		"delegation":                job.Delegation,
-	}
-	b, _ := json.Marshal(packet)
-	if len(b) > 4096 { // rev3 §3.5 N38 — externalize instead of inlining
-		b = []byte(`{"error":"context-packet exceeds 4KiB; externalize large fields"}`)
-	}
-
 	var sb strings.Builder
-	sb.WriteString("You are a harness worker executing one job.\n")
+	sb.WriteString("You are a harness worker executing ONE scoped job. Stay within the boundaries below.\n\n")
+
+	if job.Role != "" {
+		fmt.Fprintf(&sb, "Role: %s\n", job.Role)
+	}
 	if job.Goal != "" {
 		fmt.Fprintf(&sb, "Goal: %s\n", job.Goal)
 	}
-	if job.Writes {
-		fmt.Fprintf(&sb, "Make the necessary file changes with your tools. You may ONLY write within these path globs: %s. Do not write anything outside them.\n",
-			strings.Join(job.Scope.Allowed, ", "))
-	} else {
-		sb.WriteString("This is a read-only job; do not modify files.\n")
+	if job.Brief != "" {
+		fmt.Fprintf(&sb, "\nBrief:\n%s\n", job.Brief)
 	}
-	fmt.Fprintf(&sb, "When finished, output ONLY this JSON object and nothing else: "+
-		`{"job_id":%q,"status":"completed","summary":"<one line describing what you did>"}`+"\n", job.JobID)
-	sb.WriteString("\n<<context packet (authoritative; scope/constraints are not negotiable)>>\n")
-	sb.Write(b)
+
+	// Grounding: tell the worker to Read real files/findings BEFORE acting, so
+	// cross-CLI understanding gaps are closed by evidence, not by guessing.
+	if len(job.ContextRefs) > 0 {
+		sb.WriteString("\nBefore doing anything, Read these files for context (paths are relative to the repo root):\n")
+		for _, r := range job.ContextRefs {
+			fmt.Fprintf(&sb, "  - %s\n", r)
+		}
+		fmt.Fprintf(&sb, "Repo root: %s\n", job.RepoRoot)
+	}
+
+	if len(job.Constraints) > 0 {
+		sb.WriteString("\nHard constraints (do not violate):\n")
+		for _, c := range job.Constraints {
+			fmt.Fprintf(&sb, "  - %s\n", c)
+		}
+	}
+
+	if job.Writes {
+		fmt.Fprintf(&sb, "\nWrite scope: you may ONLY create/modify files within %s. Never write outside it (a guard will block you).\n",
+			strings.Join(job.Scope.Allowed, ", "))
+		if len(job.Scope.Denied) > 0 {
+			fmt.Fprintf(&sb, "Explicitly forbidden: %s\n", strings.Join(job.Scope.Denied, ", "))
+		}
+	} else {
+		sb.WriteString("\nThis is a READ-ONLY job. Do not modify any files; investigate and report.\n")
+	}
+
+	if len(job.VerificationRequirements) > 0 {
+		sb.WriteString("\nYour work will be checked by the harness re-running these (self-reported success is ignored):\n")
+		for _, v := range job.VerificationRequirements {
+			fmt.Fprintf(&sb, "  - %s\n", v)
+		}
+	}
+
+	if job.Writes {
+		fmt.Fprintf(&sb, "\nWhen finished, output ONLY this JSON and nothing else:\n"+
+			`{"job_id":%q,"status":"completed","summary":"<what you changed, one line>"}`+"\n", job.JobID)
+	} else {
+		fmt.Fprintf(&sb, "\nWhen finished, output ONLY this JSON and nothing else. Put your findings (facts, integration points, risks, file:line refs) in the summary:\n"+
+			`{"job_id":%q,"status":"completed","summary":"<your findings>"}`+"\n", job.JobID)
+	}
 	return sb.String()
 }
 
@@ -357,6 +418,23 @@ func (a *Adapter) claudePreToolHook(jobID string) string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// workdirDirty reports whether a worktree has any tracked-or-untracked changes.
+func workdirDirty(workdir string) bool {
+	out, err := exec.Command("git", "-C", workdir, "status", "--porcelain").Output()
+	return err == nil && len(strings.TrimSpace(string(out))) > 0
+}
+
+// hasCommittedWork reports whether the worktree's HEAD has advanced past the
+// job's base commit — i.e. the worker's edits were committed (used after the
+// commit step, when the worktree itself is clean again).
+func hasCommittedWork(workdir, base string) bool {
+	if base == "" {
+		return false
+	}
+	out, err := exec.Command("git", "-C", workdir, "rev-parse", "HEAD").Output()
+	return err == nil && strings.TrimSpace(string(out)) != base
 }
 
 // commitWorktree stages and commits all worktree changes onto the job branch so

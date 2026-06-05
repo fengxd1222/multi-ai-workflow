@@ -61,16 +61,20 @@ func run(args []string) int {
 		a := args[1:]
 		_, err := cli.Delegate(cwd, flagValue(a, "--session"), cli.DelegateSpec{
 			TaskID: flagValue(a, "--task"), Role: flagValue(a, "--role"), Runtime: flagValue(a, "--runtime"),
-			Goal:    flagValue(a, "--goal"),
-			Allowed: flagValues(a, "--allow"), Denied: flagValues(a, "--deny"),
-			Verify: flagValues(a, "--verify"), Depth: atoi(flagValue(a, "--depth")),
+			Goal:        flagValue(a, "--goal"),
+			Brief:       flagValue(a, "--brief"),
+			Allowed:     flagValues(a, "--allow"), Denied: flagValues(a, "--deny"),
+			Constraints: flagValuesRaw(a, "--constraint"),
+			Context:     flagValuesRaw(a, "--context"),
+			From:        flagValues(a, "--from"),
+			Verify:      flagValuesRaw(a, "--verify"), Depth: atoi(flagValue(a, "--depth")),
 		})
 		return report(err)
 
 	case "verify":
 		a := args[1:]
 		return report(cli.VerifyTask(cwd, flagValue(a, "--session"), flagValue(a, "--task"),
-			flagValue(a, "--workdir"), flagValues(a, "--cmd")))
+			flagValue(a, "--workdir"), flagValuesRaw(a, "--cmd")))
 
 	case "integrate":
 		a := args[1:]
@@ -172,6 +176,22 @@ func splitComma(s string) []string {
 	for _, p := range strings.Split(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// flagValuesRaw collects every occurrence of a repeatable flag WITHOUT splitting
+// on commas — for whole-value flags like --verify/--constraint whose values are
+// shell commands or sentences that legitimately contain commas.
+func flagValuesRaw(args []string, name string) []string {
+	var out []string
+	for i := 0; i < len(args); i++ {
+		if args[i] == name && i+1 < len(args) {
+			out = append(out, args[i+1])
+			i++
+		} else if v, ok := strings.CutPrefix(args[i], name+"="); ok {
+			out = append(out, v)
 		}
 	}
 	return out

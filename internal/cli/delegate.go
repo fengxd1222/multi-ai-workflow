@@ -3,6 +3,8 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/fengxudong/harness/internal/event"
 	"github.com/fengxudong/harness/internal/model"
@@ -16,9 +18,13 @@ type DelegateSpec struct {
 	TaskID      string
 	Role        string
 	Goal        string
+	Brief       string
 	Runtime     string
 	Allowed     []string
 	Denied      []string
+	Constraints []string
+	Context     []string // repo-relative files the worker must Read first
+	From        []string // upstream job ids whose findings to attach as context
 	Verify      []string
 	Depth       int
 	ParentChain []string // ancestor delegation fingerprints (for cycle detection)
@@ -73,12 +79,28 @@ func Delegate(dir, sid string, spec DelegateSpec) (string, error) {
 	if writes {
 		mode = model.ModeWorktree
 	}
+
+	// Grounding: explicit --context files plus the findings of any --from upstream
+	// jobs (typically a prior analysis/research job). Worker Reads these first.
+	ctxRefs := append([]string{}, spec.Context...)
+	for _, up := range spec.From {
+		fp := l.Findings(sid, up)
+		if _, err := os.Stat(fp); err != nil {
+			return "", coded(ExitUsage, "--from %s: no findings (is it a completed read-only job?)", up)
+		}
+		if rel, err := filepath.Rel(root, fp); err == nil {
+			ctxRefs = append(ctxRefs, rel)
+		}
+	}
+
 	jobID := newJobID()
 	job := model.Job{
 		JobID: jobID, TaskID: spec.TaskID, CreatedBy: "orchestrator", TargetRuntime: spec.Runtime,
-		Role: spec.Role, Goal: spec.Goal, Writes: writes, Mode: mode,
+		Role: spec.Role, Goal: spec.Goal, Brief: spec.Brief, Writes: writes, Mode: mode,
 		StateRoot: l.StateRoot, RepoRoot: root, Workdir: root,
 		Scope:                    model.Scope{Allowed: spec.Allowed, Denied: spec.Denied},
+		Constraints:              spec.Constraints,
+		ContextRefs:              ctxRefs,
 		VerificationRequirements: spec.Verify,
 		Delegation:               model.Delegation{Depth: depth, ChainFingerprints: chain},
 		Budget:                   model.JobBudget{MaxTokens: 200000, TimeoutS: 1800},

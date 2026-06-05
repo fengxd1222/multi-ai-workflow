@@ -103,6 +103,9 @@ type Job struct {
 	BaseCommit               *string     `json:"base_commit"`
 	Worker                   *Worker     `json:"worker,omitempty"`
 	Scope                    Scope       `json:"scope"`
+	Brief                    string      `json:"brief,omitempty"`
+	Constraints              []string    `json:"constraints,omitempty"`
+	ContextRefs              []string    `json:"context_refs,omitempty"` // repo-relative files the worker must Read first
 	VerificationRequirements []string    `json:"verification_requirements,omitempty"`
 	Delegation               Delegation  `json:"delegation"`
 	Budget                   JobBudget   `json:"budget"`
