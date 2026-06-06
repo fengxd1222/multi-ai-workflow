@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>harness — 执行流程动画</title>
+<style>
+  :root{
+    --bg:#0c1018; --panel:#121826; --line:#2a3550; --line-on:#4f8cff;
+    --node:#18203058; --node-br:#2c3a57; --txt:#cdd6e6; --dim:#7d89a3;
+    --on:#4f8cff; --ok:#37d39a; --warn:#ffb454; --bad:#ff6b6b; --acc:#9b7bff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--txt);
+    font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .wrap{max-width:1180px;margin:0 auto;padding:18px}
+  h1{font-size:18px;margin:0 0 2px;letter-spacing:.3px}
+  h1 small{color:var(--dim);font-weight:400;font-size:12px}
+  .layout{display:grid;grid-template-columns:1fr 360px;gap:16px;margin-top:14px}
+  @media(max-width:980px){.layout{grid-template-columns:1fr}}
+
+  .stagewrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:10px;overflow:auto}
+  .stage{position:relative;width:900px;height:560px;margin:0 auto}
+  svg.edges{position:absolute;inset:0;width:900px;height:560px;pointer-events:none}
+  .edge{stroke:var(--line);stroke-width:2;fill:none;opacity:.55;transition:.25s}
+  .edge.on{stroke:var(--line-on);stroke-width:3;opacity:1;
+    stroke-dasharray:7 7;animation:flow .6s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-28}}
+
+  .node{position:absolute;width:158px;min-height:52px;background:var(--node);
+    border:1px solid var(--node-br);border-radius:10px;padding:8px 10px;
+    transition:.25s;backdrop-filter:blur(2px)}
+  .node .t{font-weight:600;font-size:13px;color:#e7edf8}
+  .node .s{font-size:11px;color:var(--dim);margin-top:2px}
+  .node .ic{position:absolute;top:-10px;right:-8px;font-size:15px;
+    background:#0c1018;border:1px solid var(--node-br);border-radius:7px;padding:1px 5px}
+  .node.on{border-color:var(--on);box-shadow:0 0 0 1px var(--on),0 0 22px #4f8cff44;
+    transform:translateY(-1px)}
+  .node.on .t{color:#fff}
+  .node.ok{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok),0 0 22px #37d39a44}
+  .node.bad{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad),0 0 22px #ff6b6b44}
+  .node.dim{opacity:.42}
+
+  .tag{position:absolute;font-size:10px;color:var(--dim);letter-spacing:.5px}
+
+  /* right panel */
+  .side{display:flex;flex-direction:column;gap:12px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .stepno{color:var(--acc);font-size:12px;letter-spacing:1px}
+  .steptitle{font-size:16px;font-weight:700;margin:3px 0 8px;color:#fff}
+  .detail{background:#0a0e16;border:1px solid var(--line);border-radius:8px;
+    padding:8px 10px;color:#9fd0ff;font-size:12.5px;white-space:pre-wrap;word-break:break-word}
+  .desc{color:var(--txt);margin-top:10px;font-size:13px}
+  .desc b{color:#fff}
+  .pill{display:inline-block;font-size:10px;padding:1px 7px;border-radius:20px;
+    border:1px solid var(--node-br);color:var(--dim);margin-right:6px}
+  .pill.run{color:var(--on);border-color:var(--on)}
+  .pill.git{color:var(--warn);border-color:var(--warn)}
+  .pill.state{color:var(--acc);border-color:var(--acc)}
+  .pill.truth{color:var(--ok);border-color:var(--ok)}
+
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  button{background:#1b2540;color:#dfe7f5;border:1px solid var(--node-br);
+    border-radius:8px;padding:7px 11px;cursor:pointer;font:inherit;font-size:13px}
+  button:hover{border-color:var(--on)}
+  button.primary{background:#23407a;border-color:var(--on)}
+  .controls .sp{flex:1}
+  input[type=range]{width:96px;accent-color:var(--on)}
+
+  .log{background:#0a0e16;border:1px solid var(--line);border-radius:12px;padding:10px 12px;
+    height:178px;overflow:auto;font-size:12px}
+  .log div{padding:1px 0;color:var(--dim);white-space:pre-wrap}
+  .log div b{color:#cfe0ff}
+  .log div.cur{color:#eaf1ff}
+  .progress{height:4px;background:#1a2238;border-radius:3px;overflow:hidden;margin-top:8px}
+  .progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4f8cff,#9b7bff);transition:.3s}
+  .legend{font-size:11px;color:var(--dim);margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>harness · 执行流程动画 &nbsp;<small>一个 task 从 create 到 delivery 的调用逻辑与每步执行过程</small></h1>
+
+  <div class="layout">
+    <!-- STAGE -->
+    <div class="stagewrap">
+      <div class="stage" id="stage">
+        <svg class="edges" id="edges" viewBox="0 0 900 560"></svg>
+
+        <div class="tag" style="left:8px;top:6px">协议层 (确定性 CLI)</div>
+        <div class="tag" style="left:402px;top:6px">编排 / 求真</div>
+        <div class="tag" style="left:690px;top:6px">执行 / 交付</div>
+
+        <!-- nodes: data-x/data-y are top-left in the 900x560 coord space -->
+        <div class="node" id="user"     data-x="40"  data-y="34"><span class="ic">🧠</span><div class="t">User / LLM</div><div class="s">提议任务，不写状态</div></div>
+        <div class="node" id="cli"      data-x="40"  data-y="150"><span class="ic">⌨️</span><div class="t">harness CLI</div><div class="s">裁决 · 唯一写状态</div></div>
+        <div class="node" id="events"   data-x="40"  data-y="300"><span class="ic">📜</span><div class="t">Event Log</div><div class="s">append-only · 单一真相</div></div>
+        <div class="node" id="views"    data-x="40"  data-y="430"><span class="ic">🗂️</span><div class="t">State Views</div><div class="s">可重建投影 (CAS)</div></div>
+
+        <div class="node" id="adapter"  data-x="372" data-y="150"><span class="ic">🔁</span><div class="t">Adapter</div><div class="s">push 编排</div></div>
+        <div class="node" id="verify"   data-x="372" data-y="318"><span class="ic">✅</span><div class="t">Verify</div><div class="s">CLI 实跑 (不信自报)</div></div>
+        <div class="node" id="integrate"data-x="372" data-y="450"><span class="ic">🔗</span><div class="t">Integrate</div><div class="s">集成 worktree merge</div></div>
+
+        <div class="node" id="runtime"  data-x="700" data-y="70"><span class="ic">🤖</span><div class="t">Runtime</div><div class="s">claude / codex</div></div>
+        <div class="node" id="worktree" data-x="700" data-y="206"><span class="ic">🌱</span><div class="t">.worktrees/job</div><div class="s">隔离写 · 分支 job/&lt;id&gt;</div></div>
+        <div class="node" id="guard"    data-x="700" data-y="338"><span class="ic">🛡️</span><div class="t">Scope Guard</div><div class="s">PreToolUse · 越权拦截</div></div>
+        <div class="node" id="delivery" data-x="700" data-y="450"><span class="ic">📦</span><div class="t">交付分支</div><div class="s">harness/integration/&lt;t&gt;</div></div>
+      </div>
+    </div>
+
+    <!-- SIDE -->
+    <div class="side">
+      <div class="card">
+        <div class="stepno" id="stepno">STEP 0 / 18</div>
+        <div class="steptitle" id="steptitle">准备就绪</div>
+        <div class="detail" id="detail">点击 ▶ 播放，或用 单步 逐步查看 harness 的调用顺序。</div>
+        <div class="desc" id="desc">每一步会点亮当前活跃的组件与调用边，右下角日志记录调用顺序。</div>
+        <div class="progress"><i id="bar"></i></div>
+      </div>
+
+      <div class="card">
+        <div class="controls">
+          <button id="prev">◀ 单步</button>
+          <button class="primary" id="play">▶ 播放</button>
+          <button id="next">单步 ▶</button>
+          <button id="reset">⟲ 重置</button>
+          <span class="sp"></span>
+          速度<input type="range" id="speed" min="600" max="2600" value="1500" step="100">
+        </div>
+        <div class="legend">
+          <span class="pill run">运行</span><span class="pill git">git</span>
+          <span class="pill state">状态迁移</span><span class="pill truth">求真</span>
+          &nbsp;harness 永不写你的主工作树
+        </div>
+      </div>
+
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const NODES = ["user","cli","events","views","adapter","verify","integrate","runtime","worktree","guard","delivery"];
+const BOX = {w:158,h:52};
+const el = id => document.getElementById(id);
+const stage = el("stage"), edgesSvg = el("edges");
+
+// place nodes from data-x/data-y, collect centers
+const center = {};
+NODES.forEach(id=>{
+  const n = el(id);
+  const x = +n.dataset.x, y = +n.dataset.y;
+  n.style.left = x+"px"; n.style.top = y+"px";
+  center[id] = {x: x+BOX.w/2, y: y+BOX.h/2};
+});
+
+// all edges (drawn faint; highlighted per step)
+const EDGES = [
+  ["user","cli"],["cli","events"],["events","views"],
+  ["cli","adapter"],["adapter","views"],["adapter","events"],
+  ["adapter","worktree"],["adapter","runtime"],["runtime","worktree"],
+  ["worktree","guard"],["runtime","adapter"],["adapter","verify"],
+  ["cli","verify"],["cli","integrate"],["integrate","worktree"],
+  ["integrate","delivery"],["cli","delivery"]
+];
+const edgeKey=(a,b)=>a+">"+b, edgeEls={};
+EDGES.forEach(([a,b])=>{
+  const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+  const A=center[a],B=center[b];
+  // slight curve for readability
+  const mx=(A.x+B.x)/2, my=(A.y+B.y)/2;
+  p.setAttribute("d",`M${A.x},${A.y} Q${mx},${my} ${B.x},${B.y}`);
+  p.setAttribute("class","edge");
+  edgesSvg.appendChild(p); edgeEls[edgeKey(a,b)]=p;
+});
+
+// ---- the script: ordered steps ----
+const P = {run:"run",git:"git",state:"state",truth:"truth"};
+const STEPS = [
+ {t:"harness init", tag:P.run, on:["cli","views"], e:[["cli","views"]],
+  d:"harness init", state:"init",
+  desc:"在 git 仓里建 <b>.harness/</b>：写入 schema、reserved.json、合同。非 git 仓直接拒绝。",
+  log:"cli: 写 .harness/ (schemas + reserved.json)"},
+
+ {t:"session start", tag:P.state, on:["cli","events","views"], e:[["cli","events"],["events","views"]],
+  d:"harness session start\n→ git status 基线 + session.started 事件",
+  desc:"捕获仓库基线（HEAD + 脏改动），写 <b>session.started</b> 事件，折叠出 session 视图。",
+  log:"cli: session.started → 视图 (events 是真相)"},
+
+ {t:"task create", tag:P.state, on:["cli","events","views"], e:[["cli","events"],["events","views"]],
+  d:"harness task create --title …\n→ task.created (CAS rev=1)",
+  desc:"创建任务。所有状态变更都先 <b>append 事件</b>，再更新可重建的视图。",
+  log:"cli: task.created (T-…)"},
+
+ {t:"delegate", tag:P.state, on:["cli","events","views"], e:[["cli","events"],["events","views"]],
+  d:"harness delegate --role implementation\n  --runtime claude --allow 'src/**' --goal …",
+  desc:"从任务派生 <b>job</b>。写角色 → 自动判定 writes=true / worktree 模式，scope 写入 job。",
+  log:"cli: job.created (J-…, writes, scope=src/**)"},
+
+ {t:"run: 载入 job", tag:P.run, on:["cli","adapter","views"], e:[["cli","adapter"],["adapter","views"]],
+  d:"harness run --job J-…\nadapter 读取 job 视图 (status=created)",
+  desc:"<b>harness run</b> 把 job 交给 Adapter。Adapter 从视图读取 job（scope / runtime / goal）。",
+  log:"adapter: 载入 J-… (created)"},
+
+ {t:"开 worktree", tag:P.git, on:["adapter","worktree"], e:[["adapter","worktree"]],
+  d:"git worktree add -b job/J-… .worktrees/J-… HEAD",
+  desc:"写 job 各自一个 <b>worktree + 分支</b>，base=HEAD 的真实 commit。隔离，崩溃即丢弃。",
+  log:"git: worktree add -b job/J-… (base=HEAD)"},
+
+ {t:"created→running", tag:P.state, on:["adapter","events","views"], e:[["adapter","events"],["adapter","views"]],
+  d:"state: created→running (CAS rev 1→2)\n  + worker{pid,boot_id}, base_commit",
+  desc:"spawn 前 <b>CAS 迁移到 running</b>，同一事件里盖上 worker 身份与 worktree 绑定。",
+  log:"state: J-… created→running (CAS ok)"},
+
+ {t:"组 prompt + 注入 hook", tag:P.run, on:["adapter"], e:[],
+  d:"prompt = goal + 可写 scope + 必须输出 job-result\n--settings: PreToolUse → harness guard pretool",
+  desc:"组装任务指令；给 claude 注入 <b>PreToolUse hook</b>（指回主仓 .harness 的 --repo），会话内拦越权。",
+  log:"adapter: 注入 PreToolUse hook (--settings)"},
+
+ {t:"spawn worker", tag:P.run, on:["adapter","runtime"], e:[["adapter","runtime"]],
+  d:"adapter.invoke: spawn (cwd=worktree) + 看门狗(timeout_s)\n  --allowedTools Read,Edit,Write,Bash",
+  desc:"在 worktree 里 <b>spawn 真实 runtime</b>，挂 wall-clock 看门狗，超时 SIGKILL 进程组。",
+  log:"runtime: claude exec 启动 (watchdog on)"},
+
+ {t:"worker 写文件 + guard", tag:P.git, on:["runtime","worktree","guard"], e:[["runtime","worktree"],["worktree","guard"]],
+  d:"worker: Write src/hello.txt\nPreToolUse → guard: scope.Classify → allow",
+  desc:"worker 每次写 → <b>PreToolUse 触发 guard</b>：in-scope 放行；越权(.env/package.json)→ deny，写被拦。",
+  log:"guard: Write src/hello.txt → allow ✓ (越权会 deny)"},
+
+ {t:"取回结果", tag:P.run, on:["runtime","adapter"], e:[["runtime","adapter"]],
+  d:"capture artifacts; 拆 claude 包装 .result → job-result\n校验 schema (失败则修复重试一次)",
+  desc:"worker 返回。Adapter 抓 stdout/stderr，<b>拆 .result</b> 得业务结果，校验 schema。",
+  log:"adapter: 取 .result + usage，schema ok"},
+
+ {t:"commit 到 job 分支", tag:P.git, on:["adapter","worktree"], e:[["adapter","worktree"]],
+  d:"git add -A && git commit  (harness 身份)\n→ 改动落到 job/J-… 分支",
+  desc:"由 <b>CLI 确定性 commit</b> worker 的改动到 job 分支（不依赖 worker 自己提交），供 integrate 合并。",
+  log:"git: commit → job/J-… (worker 改动入分支)"},
+
+ {t:"求真: scope 复核", tag:P.truth, on:["adapter","worktree","guard"], e:[["adapter","worktree"],["worktree","guard"]],
+  d:"git diff <base_commit> → 真实改动集\nClassify 每个路径 (忽略 worker 自报 changed_files)",
+  desc:"<b>用 git diff 求真</b>，不信 worker 自报。任何越权(含新建/ignored/rename)→ needs-human + gate。",
+  log:"truth: git diff 复核 scope → 无越权"},
+
+ {t:"求真: 跑 verify", tag:P.truth, on:["adapter","verify"], e:[["adapter","verify"]],
+  d:"CLI 重跑 job.verification_requirements\n  (test -f src/hello.txt …)",
+  desc:"<b>CLI 亲自重跑验证命令</b>，以实跑 exit code 为准——worker 自报 passed 不算数。",
+  log:"truth: 重跑 verify → passed"},
+
+ {t:"running→completed", tag:P.state, on:["adapter","events","views"], e:[["adapter","events"],["adapter","views"]],
+  d:"state: running→completed (CAS rev 2→3) + event",
+  desc:"求真全过 → <b>CAS 迁移到 completed</b>。（越权/失败则迁 needs-human 并自动开 gate。）",
+  log:"state: J-… running→completed (CAS ok)"},
+
+ {t:"task verify", tag:P.truth, on:["cli","verify","views"], e:[["cli","verify"],["adapter","verify"]],
+  d:"harness verify --task --cmd 'go test ./...'\n→ verification.json (≥1 required，空集不算过)",
+  desc:"任务级验证：CLI 实跑全量检查写 <b>verification.json</b>，喂给 completion contract。",
+  log:"cli: task verify → verification.json (passed)"},
+
+ {t:"integrate → 交付分支", tag:P.git, on:["cli","integrate","worktree","delivery"],
+  e:[["cli","integrate"],["integrate","worktree"],["integrate","delivery"]],
+  d:"集成 worktree: merge-base 复核 denied → git merge job/J-…\n成功才 branch -f → harness/integration/<t>",
+  desc:"在<b>独立集成 worktree</b> 合并 job 分支：denied 改动拒绝、冲突 --abort。成功才原子提升交付分支。",
+  log:"integrate: merge job/J-… → harness/integration/<t>"},
+
+ {t:"handoff (主树未触碰)", tag:P.run, on:["cli","delivery","views"], e:[["cli","delivery"],["cli","views"]],
+  d:"harness handoff --task → handoff.md\ncompletion contract 四条满足 → done",
+  desc:"渲染交接说明。<b>你的主工作树全程零触碰</b>——结果在交付分支，等你 review 后 merge。",
+  log:"cli: handoff.md ✓ · contract 满足 · 主树未触碰"}
+];
+
+// ---- engine ----
+let i = 0, timer = null, playing = false;
+const log = el("log");
+
+function clearActive(){
+  NODES.forEach(id=>el(id).classList.remove("on","ok","bad","dim"));
+  Object.values(edgeEls).forEach(p=>p.classList.remove("on"));
+}
+function applyStep(k){
+  clearActive();
+  const s = STEPS[k];
+  // dim all, then light active
+  NODES.forEach(id=>el(id).classList.add("dim"));
+  s.on.forEach(id=>{el(id).classList.remove("dim"); el(id).classList.add("on");});
+  // mark terminal-ish nodes
+  if(k===STEPS.length-1){ el("delivery").classList.remove("on"); el("delivery").classList.add("ok"); }
+  s.e.forEach(([a,b])=>{ const p=edgeEls[edgeKey(a,b)]; if(p) p.classList.add("on"); });
+
+  el("stepno").textContent = `STEP ${k+1} / ${STEPS.length}`;
+  el("steptitle").innerHTML = `<span class="pill ${s.tag}">${s.tag}</span>` + s.t;
+  el("detail").textContent = s.d;
+  el("desc").innerHTML = s.desc;
+  el("bar").style.width = ((k+1)/STEPS.length*100)+"%";
+
+  // log
+  [...log.querySelectorAll(".cur")].forEach(n=>n.classList.remove("cur"));
+  const line = document.createElement("div");
+  line.className="cur";
+  line.innerHTML = `<b>${String(k+1).padStart(2,"0")}</b> ${s.log}`;
+  log.appendChild(line); log.scrollTop = log.scrollHeight;
+}
+function next(){ if(i<STEPS.length){ applyStep(i); i++; } else { stop(); } }
+function prev(){ stop(); i=Math.max(0,i-1); rebuildLog(i); if(i<STEPS.length){applyStep(i); i++;} }
+function rebuildLog(upto){ log.innerHTML=""; }
+function play(){ if(playing){stop();return;} if(i>=STEPS.length){reset();} playing=true; el("play").textContent="⏸ 暂停"; el("play").classList.add("primary");
+  next(); timer=setInterval(()=>{ if(i>=STEPS.length){stop();return;} next(); }, +el("speed").value); }
+function stop(){ playing=false; clearInterval(timer); el("play").textContent="▶ 播放"; }
+function reset(){ stop(); i=0; clearActive(); log.innerHTML="";
+  el("stepno").textContent=`STEP 0 / ${STEPS.length}`; el("steptitle").textContent="准备就绪";
+  el("detail").textContent="点击 ▶ 播放，或用 单步 逐步查看 harness 的调用顺序。";
+  el("desc").innerHTML="每一步会点亮当前活跃的组件与调用边，右下角日志记录调用顺序。";
+  el("bar").style.width="0";
+}
+el("next").onclick=()=>{stop(); next();};
+el("prev").onclick=prev;
+el("play").onclick=play;
+el("reset").onclick=reset;
+el("speed").oninput=()=>{ if(playing){ clearInterval(timer); timer=setInterval(()=>{ if(i>=STEPS.length){stop();return;} next(); }, +el("speed").value);} };
+document.addEventListener("keydown",e=>{ if(e.key==="ArrowRight"){stop();next();} if(e.key==="ArrowLeft")prev(); if(e.key===" "){e.preventDefault();play();} });
+reset();
+</script>
+</body>
+</html>
