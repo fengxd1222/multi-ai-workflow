@@ -80,6 +80,52 @@ func TestDelegate_FromAttachesFindings(t *testing.T) {
 	}
 }
 
+func TestDelegate_TrellisTaskEnriches(t *testing.T) {
+	dir, sid, root := initSessionWithCommit(t)
+	// lay down a Trellis task under the repo
+	td := filepath.Join(root, ".trellis", "tasks", "02-27-login")
+	if err := os.MkdirAll(td, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(td, "task.json"), []byte(`{"id":"02-27-login","title":"Add login validation","status":"planning","branch":"feat/login"}`), 0o644)
+	os.WriteFile(filepath.Join(td, "prd.md"), []byte("# Login\nValidate inputs; empty -> E_BADPASS."), 0o644)
+	os.WriteFile(filepath.Join(td, "implement.jsonl"), []byte(`{"file":"src/auth/service.js","reason":"target"}`+"\n"), 0o644)
+
+	jobID, err := Delegate(dir, sid, DelegateSpec{
+		TaskID: "T-1", Role: model.RoleImplementation, Runtime: model.RuntimeClaude,
+		TrellisTask: "02-27-login", Allowed: []string{"src/**"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var j model.Job
+	if err := store.ReadJSON(store.NewLayout(root).JobView(sid, jobID), &j); err != nil {
+		t.Fatal(err)
+	}
+	if j.Goal != "Add login validation" {
+		t.Errorf("goal not from trellis title: %q", j.Goal)
+	}
+	if !strings.Contains(j.Brief, "Validate inputs") {
+		t.Errorf("brief not from prd: %q", j.Brief)
+	}
+	if !sliceHas(j.ContextRefs, "src/auth/service.js") {
+		t.Errorf("context_refs not from implement.jsonl: %v", j.ContextRefs)
+	}
+	if j.TrellisTask != "02-27-login" {
+		t.Errorf("trellis_task not recorded: %q", j.TrellisTask)
+	}
+}
+
+func TestDelegate_TrellisTaskNoWorkspace(t *testing.T) {
+	dir, sid, _ := initSessionWithCommit(t)
+	if _, err := Delegate(dir, sid, DelegateSpec{
+		TaskID: "T-1", Role: model.RoleImplementation, Runtime: model.RuntimeClaude,
+		TrellisTask: "02-27-x",
+	}); CodeOf(err) != ExitUsage {
+		t.Fatalf("--trellis-task without .trellis should be ExitUsage, got %v", err)
+	}
+}
+
 func TestDelegate_FromMissingFindings(t *testing.T) {
 	dir, sid, _ := initSessionWithCommit(t)
 	if _, err := Delegate(dir, sid, DelegateSpec{

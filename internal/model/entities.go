@@ -93,6 +93,7 @@ type Job struct {
 	TargetRuntime            string      `json:"target_runtime"`
 	Role                     string      `json:"role"`
 	Goal                     string      `json:"goal,omitempty"`
+	TrellisTask              string      `json:"trellis_task,omitempty"` // co-located Trellis task slug, for write-back
 	Writes                   bool        `json:"writes"`
 	Status                   string      `json:"status"`
 	Mode                     string      `json:"mode"`

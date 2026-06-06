@@ -10,12 +10,14 @@ import (
 	"github.com/fengxudong/harness/internal/model"
 	"github.com/fengxudong/harness/internal/state"
 	"github.com/fengxudong/harness/internal/store"
+	"github.com/fengxudong/harness/internal/trellis"
 )
 
 // DelegateSpec describes a job to create from a task (rev3 §8, §16). In the
 // CLI+hooks model the orchestrator (a human-driven session) supplies these.
 type DelegateSpec struct {
 	TaskID      string
+	TrellisTask string // optional Trellis task slug to enrich goal/brief/context from
 	Role        string
 	Goal        string
 	Brief       string
@@ -45,6 +47,27 @@ func Delegate(dir, sid string, spec DelegateSpec) (string, error) {
 	}
 	if spec.Role == "" || spec.Runtime == "" || spec.TaskID == "" {
 		return "", coded(ExitUsage, "delegate needs --task, --role and --runtime")
+	}
+
+	// Enrich from a co-located Trellis task (read-only consumption): pull goal
+	// from the title, brief from prd.md, and grounding files from implement.jsonl.
+	// This turns "delegate a one-line goal" into a Trellis-backed work order.
+	if spec.TrellisTask != "" {
+		proj, ok := trellis.Detect(root)
+		if !ok {
+			return "", coded(ExitUsage, "--trellis-task given but no .trellis/ workspace in %s", root)
+		}
+		tt, terr := proj.LoadTask(spec.TrellisTask)
+		if terr != nil {
+			return "", coded(ExitUsage, "%v", terr)
+		}
+		if spec.Goal == "" {
+			spec.Goal = tt.Title
+		}
+		if spec.Brief == "" {
+			spec.Brief = tt.PRD
+		}
+		spec.Context = append(spec.Context, tt.ContextRefs...)
 	}
 
 	// Delegation depth + cycle detection (rev3 §8.5 N29).
@@ -96,7 +119,7 @@ func Delegate(dir, sid string, spec DelegateSpec) (string, error) {
 	jobID := newJobID()
 	job := model.Job{
 		JobID: jobID, TaskID: spec.TaskID, CreatedBy: "orchestrator", TargetRuntime: spec.Runtime,
-		Role: spec.Role, Goal: spec.Goal, Brief: spec.Brief, Writes: writes, Mode: mode,
+		Role: spec.Role, Goal: spec.Goal, TrellisTask: spec.TrellisTask, Brief: spec.Brief, Writes: writes, Mode: mode,
 		StateRoot: l.StateRoot, RepoRoot: root, Workdir: root,
 		Scope:                    model.Scope{Allowed: spec.Allowed, Denied: spec.Denied},
 		Constraints:              spec.Constraints,

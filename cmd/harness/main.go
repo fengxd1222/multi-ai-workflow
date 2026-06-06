@@ -61,6 +61,7 @@ func run(args []string) int {
 		a := args[1:]
 		_, err := cli.Delegate(cwd, flagValue(a, "--session"), cli.DelegateSpec{
 			TaskID: flagValue(a, "--task"), Role: flagValue(a, "--role"), Runtime: flagValue(a, "--runtime"),
+			TrellisTask: flagValue(a, "--trellis-task"),
 			Goal:        flagValue(a, "--goal"),
 			Brief:       flagValue(a, "--brief"),
 			Allowed:     flagValues(a, "--allow"), Denied: flagValues(a, "--deny"),
