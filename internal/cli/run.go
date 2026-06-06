@@ -13,6 +13,7 @@ import (
 	"github.com/fengxudong/harness/internal/scope"
 	"github.com/fengxudong/harness/internal/state"
 	"github.com/fengxudong/harness/internal/store"
+	"github.com/fengxudong/harness/internal/trellis"
 )
 
 // Run drives one created job to a terminal state via the adapter (rev3 §8, §16).
@@ -49,10 +50,43 @@ func Run(dir, sid, jobID string) error {
 		return coded(ExitRuntimeFailed, "run job %s: %v", jobID, err)
 	}
 	fmt.Printf("job %s -> %s (%s)\n", jobID, out.Status, out.Reason)
+
+	recordTrellisJournal(root, out.Job)
+
 	if out.Status == model.JobNeedsHuman {
 		return coded(ExitNeedsHuman, "job %s needs human review", jobID)
 	}
 	return nil
+}
+
+// recordTrellisJournal writes a journal entry back to a co-located Trellis
+// workspace via its own add_session.py (so the format stays Trellis's). Strictly
+// best-effort: no Trellis task, no script, or no python interpreter all skip
+// quietly with a note — never fails the run (write-back strategy: scripts).
+func recordTrellisJournal(root string, job model.Job) {
+	if job.TrellisTask == "" {
+		return
+	}
+	proj, ok := trellis.Detect(root)
+	if !ok {
+		return
+	}
+	if !proj.HasScript("add_session.py") {
+		fmt.Println("note: .trellis/scripts/add_session.py not found — skipping Trellis journal write-back")
+		return
+	}
+	branch := ""
+	if job.Branch != nil {
+		branch = *job.Branch
+	}
+	title := fmt.Sprintf("harness %s — %s", job.Status, job.Goal)
+	summary := fmt.Sprintf("harness job %s (%s/%s) on task %s; branch=%s",
+		job.JobID, job.TargetRuntime, job.Role, job.TrellisTask, branch)
+	if _, err := proj.RecordSession(title, "", summary); err != nil {
+		fmt.Printf("note: Trellis journal write-back skipped (%v; set HARNESS_PYTHON if your interpreter is non-standard)\n", err)
+		return
+	}
+	fmt.Printf("recorded session to Trellis journal for task %s\n", job.TrellisTask)
 }
 
 func runtimeFor(target string) (runtime.Runtime, error) {

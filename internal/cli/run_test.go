@@ -10,6 +10,47 @@ import (
 	"github.com/fengxudong/harness/internal/store"
 )
 
+// TestRun_TrellisJournalWriteBack: a job carrying a trellis_task triggers a
+// best-effort add_session.py call after run. We stub the script (self-executable
+// sh) to drop a marker file and assert it was invoked with the journal args.
+func TestRun_TrellisJournalWriteBack(t *testing.T) {
+	dir, sid, root := initSessionWithCommit(t)
+
+	// stub Trellis: a task + a fake add_session.py that records its invocation
+	td := filepath.Join(root, ".trellis", "tasks", "02-27-x")
+	if err := os.MkdirAll(td, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(td, "task.json"), []byte(`{"id":"02-27-x","title":"x","status":"planning"}`), 0o644)
+	sd := filepath.Join(root, ".trellis", "scripts")
+	os.MkdirAll(sd, 0o755)
+	marker := filepath.Join(root, "session-recorded.txt")
+	os.WriteFile(filepath.Join(sd, "add_session.py"), []byte("#!/bin/sh\necho \"$*\" > "+marker+"\n"), 0o755)
+
+	eng := state.New(store.NewLayout(root), sid)
+	job := model.Job{
+		JobID: "J-1", TaskID: "T-1", CreatedBy: "x", TargetRuntime: model.RuntimeClaude,
+		Role: model.RoleImplementation, Writes: true, Mode: model.ModeWorktree, TrellisTask: "02-27-x",
+		StateRoot: root + "/.harness", RepoRoot: root, Workdir: root,
+		Scope:      model.Scope{Allowed: []string{"src/**"}},
+		Delegation: model.Delegation{Depth: 1, ChainFingerprints: []string{"T-1:x"}},
+		Budget:     model.JobBudget{TimeoutS: 2}, ResultContract: "job-result.schema.json",
+	}
+	if err := eng.CreateJob("x", job); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HARNESS_CLAUDE_BIN", "harness-no-such-bin") // job will fail; write-back still fires
+	_ = Run(dir, sid, "J-1")
+
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("add_session.py was not invoked: %v", err)
+	}
+	if s := string(data); !contains(s, "--title") || !contains(s, "--summary") {
+		t.Fatalf("journal call missing args: %q", s)
+	}
+}
+
 func initSessionWithCommit(t *testing.T) (dir, sid, root string) {
 	t.Helper()
 	dir = gitRepo(t)
