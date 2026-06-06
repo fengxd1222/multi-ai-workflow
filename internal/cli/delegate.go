@@ -49,6 +49,18 @@ func Delegate(dir, sid string, spec DelegateSpec) (string, error) {
 		return "", coded(ExitUsage, "delegate needs --task, --role and --runtime")
 	}
 
+	// Auto-link the task the user already started in Trellis (read-only). If no
+	// --trellis-task was given but `task.py current` reports an active task, use
+	// it — zero-input "minimal migration".
+	if spec.TrellisTask == "" {
+		if proj, ok := trellis.Detect(root); ok {
+			if slug, found := proj.CurrentTask(); found {
+				spec.TrellisTask = slug
+				fmt.Printf("auto-linked Trellis active task: %s\n", slug)
+			}
+		}
+	}
+
 	// Enrich from a co-located Trellis task (read-only consumption): pull goal
 	// from the title, brief from prd.md, and grounding files from implement.jsonl.
 	// This turns "delegate a one-line goal" into a Trellis-backed work order.

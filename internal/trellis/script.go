@@ -88,15 +88,42 @@ func interpreterWorks(name string) bool {
 }
 
 // RecordSession appends a session entry to the developer's Trellis journal via
-// add_session.py (parameters are documented; this is the only write-back wired
-// in for now). commit may be empty.
-func (p Project) RecordSession(title, commit, summary string) (string, error) {
-	args := []string{"--title", title}
+// add_session.py. Always passes --no-commit so harness never auto-commits the
+// user's repo (no unsolicited git); the journal file is still written.
+// commit/branch may be empty.
+func (p Project) RecordSession(title, commit, summary, branch string) (string, error) {
+	args := []string{"--title", title, "--no-commit"}
 	if commit != "" {
 		args = append(args, "--commit", commit)
 	}
 	if summary != "" {
 		args = append(args, "--summary", summary)
 	}
+	if branch != "" {
+		args = append(args, "--branch", branch)
+	}
 	return p.RunScript("add_session.py", args...)
+}
+
+// CurrentTask returns the slug of Trellis's active task (read-only via
+// `task.py current`: exit 0 + stdout=path when set, exit 1 when none). ok=false
+// when there is no active task or task.py is unavailable — lets harness
+// auto-link the task the user already started in Trellis.
+func (p Project) CurrentTask() (string, bool) {
+	if !p.HasScript("task.py") {
+		return "", false
+	}
+	out, err := p.RunScript("task.py", "current")
+	out = strings.TrimSpace(out)
+	if err != nil || out == "" {
+		return "", false
+	}
+	return filepath.Base(strings.TrimRight(out, "/")), true
+}
+
+// SetBranch records a git branch on a Trellis task (task.py set-branch). It only
+// rewrites task.json's branch field and does NOT git-commit (verified against
+// Trellis task_store.py), so it is safe for harness to call as write-back.
+func (p Project) SetBranch(slug, branch string) (string, error) {
+	return p.RunScript("task.py", "set-branch", slug, branch)
 }

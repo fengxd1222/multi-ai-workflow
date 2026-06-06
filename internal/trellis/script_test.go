@@ -76,11 +76,11 @@ func TestRecordSession_SelfExec(t *testing.T) {
 	root := t.TempDir()
 	// fake add_session.py that echoes its args so we can assert wiring
 	writeScript(t, root, "add_session.py", "#!/bin/sh\necho \"$*\"\n", true)
-	out, err := Project{Root: root}.RecordSession("a title", "abc123", "a summary")
+	out, err := Project{Root: root}.RecordSession("a title", "abc123", "a summary", "job/J-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"--title", "a title", "--commit", "abc123", "--summary", "a summary"} {
+	for _, want := range []string{"--title", "a title", "--no-commit", "--commit", "abc123", "--summary", "a summary", "--branch", "job/J-1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("RecordSession args missing %q in %q", want, out)
 		}
@@ -90,8 +90,42 @@ func TestRecordSession_SelfExec(t *testing.T) {
 func TestRecordSession_OmitsEmptyCommit(t *testing.T) {
 	root := t.TempDir()
 	writeScript(t, root, "add_session.py", "#!/bin/sh\necho \"$*\"\n", true)
-	out, _ := Project{Root: root}.RecordSession("t", "", "s")
-	if strings.Contains(out, "--commit") {
-		t.Fatalf("empty commit should be omitted: %q", out)
+	out, _ := Project{Root: root}.RecordSession("t", "", "s", "")
+	if strings.Contains(out, "--commit") || strings.Contains(out, "--branch") {
+		t.Fatalf("empty commit/branch should be omitted: %q", out)
+	}
+	if !strings.Contains(out, "--no-commit") {
+		t.Fatalf("--no-commit should always be present: %q", out)
+	}
+}
+
+func TestCurrentTask(t *testing.T) {
+	root := t.TempDir()
+	// no task.py -> not ok
+	if _, ok := (Project{Root: root}).CurrentTask(); ok {
+		t.Fatal("no task.py should be not-ok")
+	}
+	// active task: stub task.py that prints a path on `current`
+	writeScript(t, root, "task.py", "#!/bin/sh\n[ \"$1\" = current ] && echo '.trellis/tasks/05-12-xterm/' && exit 0\nexit 1\n", true)
+	slug, ok := Project{Root: root}.CurrentTask()
+	if !ok || slug != "05-12-xterm" {
+		t.Fatalf("CurrentTask = %q,%v want 05-12-xterm,true", slug, ok)
+	}
+	// none active: exit 1, empty stdout -> not ok
+	writeScript(t, root, "task.py", "#!/bin/sh\nexit 1\n", true)
+	if _, ok := (Project{Root: root}).CurrentTask(); ok {
+		t.Fatal("exit 1 should be not-ok")
+	}
+}
+
+func TestSetBranch(t *testing.T) {
+	root := t.TempDir()
+	writeScript(t, root, "task.py", "#!/bin/sh\necho \"$*\"\n", true)
+	out, err := Project{Root: root}.SetBranch("05-12-xterm", "job/J-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "set-branch 05-12-xterm job/J-1") {
+		t.Fatalf("SetBranch args = %q", out)
 	}
 }

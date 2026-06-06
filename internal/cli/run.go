@@ -51,7 +51,7 @@ func Run(dir, sid, jobID string) error {
 	}
 	fmt.Printf("job %s -> %s (%s)\n", jobID, out.Status, out.Reason)
 
-	recordTrellisJournal(root, out.Job)
+	writeBackTrellis(root, out.Job)
 
 	if out.Status == model.JobNeedsHuman {
 		return coded(ExitNeedsHuman, "job %s needs human review", jobID)
@@ -59,11 +59,13 @@ func Run(dir, sid, jobID string) error {
 	return nil
 }
 
-// recordTrellisJournal writes a journal entry back to a co-located Trellis
-// workspace via its own add_session.py (so the format stays Trellis's). Strictly
-// best-effort: no Trellis task, no script, or no python interpreter all skip
-// quietly with a note — never fails the run (write-back strategy: scripts).
-func recordTrellisJournal(root string, job model.Job) {
+// writeBackTrellis writes harness's outcome back to a co-located Trellis task via
+// Trellis's own scripts (so formats stay Trellis's): records the job's branch on
+// the task (set-branch, only touches task.json) and appends a journal entry
+// (add_session.py --no-commit). Strictly best-effort — missing task/script/python
+// all skip with a note, never failing the run. status推进(start/finish/archive)
+// 不自动: start 需 Trellis session identity, archive 涉 review 边界, 由你在 Trellis 侧驱动.
+func writeBackTrellis(root string, job model.Job) {
 	if job.TrellisTask == "" {
 		return
 	}
@@ -71,22 +73,31 @@ func recordTrellisJournal(root string, job model.Job) {
 	if !ok {
 		return
 	}
-	if !proj.HasScript("add_session.py") {
-		fmt.Println("note: .trellis/scripts/add_session.py not found — skipping Trellis journal write-back")
-		return
-	}
 	branch := ""
 	if job.Branch != nil {
 		branch = *job.Branch
 	}
-	title := fmt.Sprintf("harness %s — %s", job.Status, job.Goal)
-	summary := fmt.Sprintf("harness job %s (%s/%s) on task %s; branch=%s",
-		job.JobID, job.TargetRuntime, job.Role, job.TrellisTask, branch)
-	if _, err := proj.RecordSession(title, "", summary); err != nil {
-		fmt.Printf("note: Trellis journal write-back skipped (%v; set HARNESS_PYTHON if your interpreter is non-standard)\n", err)
+
+	// set-branch: record the job's git branch on the Trellis task (safe — only
+	// rewrites task.json.branch, no git commit).
+	if branch != "" && proj.HasScript("task.py") {
+		if _, err := proj.SetBranch(job.TrellisTask, branch); err != nil {
+			fmt.Printf("note: trellis set-branch skipped (%v)\n", err)
+		}
+	}
+
+	// journal
+	if !proj.HasScript("add_session.py") {
+		fmt.Println("note: .trellis/scripts/add_session.py not found — skipping Trellis journal")
 		return
 	}
-	fmt.Printf("recorded session to Trellis journal for task %s\n", job.TrellisTask)
+	title := fmt.Sprintf("harness %s — %s", job.Status, job.Goal)
+	summary := fmt.Sprintf("harness job %s (%s/%s) on task %s", job.JobID, job.TargetRuntime, job.Role, job.TrellisTask)
+	if _, err := proj.RecordSession(title, "", summary, branch); err != nil {
+		fmt.Printf("note: Trellis journal skipped (%v; set HARNESS_PYTHON if your interpreter is non-standard)\n", err)
+		return
+	}
+	fmt.Printf("trellis: journaled task %s\n", job.TrellisTask)
 }
 
 func runtimeFor(target string) (runtime.Runtime, error) {
