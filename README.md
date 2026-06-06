@@ -37,19 +37,42 @@ Design docs: [`docs/harness-v1-spec.md`](docs/harness-v1-spec.md) (rev3),
 
 ---
 
-## Requirements
+## Install
 
-- Go **1.26+**
-- git **2.x**
-- macOS or Linux (Windows is out of v1 scope)
-- For real runs: `claude` and/or `codex` on `PATH` (override with
-  `HARNESS_CLAUDE_BIN` / `HARNESS_CODEX_BIN`)
-
-## Build
+harness is a single, dependency-free Go binary (schemas are embedded). On a
+fresh machine:
 
 ```bash
-go build -o harness ./cmd/harness
-go test ./...        # unit suite (no API calls)
+# prerequisites: Go 1.26+ and git 2.x
+git clone <this-repo> harness && cd harness
+
+./install.sh                  # builds + installs to $(go env GOPATH)/bin,
+                              # then reports which runtime deps are present
+# or choose a dir:  ./install.sh /usr/local/bin   (may need sudo)
+# or with make:     make install
+# or by hand:       go build -o harness ./cmd/harness && mv harness ~/bin/
+
+harness version
+```
+
+Make sure the install dir is on `PATH` (the script prints the line to add if not).
+
+**Build prerequisites** (to *install* harness): **Go 1.26+** and **git**. Nothing
+else — there are no external Go modules.
+
+**Runtime dependencies** (to *use* harness):
+
+| Tool | Needed for | Required? |
+|---|---|---|
+| `git` 2.x | repos, worktrees, diffs | **yes** |
+| `claude` and/or `codex` on PATH | worker runtimes (override via `HARNESS_CLAUDE_BIN` / `HARNESS_CODEX_BIN`) | at least one to run jobs |
+| `python3` | Trellis write-back only (override via `HARNESS_PYTHON`) | optional |
+| `trellis` (`npm i -g @mindfoldhq/trellis`) | the knowledge/spec layer | optional |
+
+Platform: macOS or Linux (Windows is out of v1 scope).
+
+```bash
+go test ./...        # unit suite, no API calls — verify the build
 ```
 
 ---
