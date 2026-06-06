@@ -63,8 +63,10 @@ func TestE2E_Codex_Extracts(t *testing.T) {
 			t.Fatalf("git %v: %v\n%s", a, err, out)
 		}
 	}
+	// codex --output-schema is OpenAI-strict: additionalProperties:false and all
+	// properties required (matches schemas/codex-output.schema.json).
 	schema := filepath.Join(dir, "jr.schema.json")
-	_ = os.WriteFile(schema, []byte(`{"type":"object","properties":{"job_id":{"type":"string"},"status":{"type":"string"},"summary":{"type":"string"}},"required":["job_id","status","summary"]}`), 0o644)
+	_ = os.WriteFile(schema, []byte(`{"type":"object","additionalProperties":false,"required":["job_id","status","summary"],"properties":{"job_id":{"type":"string"},"status":{"type":"string"},"summary":{"type":"string"}}}`), 0o644)
 
 	r, err := Codex{}.Run(context.Background(), Request{
 		Workdir: dir, Prompt: triviaPrompt, SchemaPath: schema, Sandbox: "read-only", TimeoutS: 180,

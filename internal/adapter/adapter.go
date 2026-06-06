@@ -146,7 +146,7 @@ func (a *Adapter) invoke(ctx context.Context, job model.Job, workdir string) (ru
 		Runtime:       job.TargetRuntime,
 		Workdir:       workdir,
 		Prompt:        a.buildPrompt(job, workdir),
-		SchemaPath:    filepath.Join(a.L.Schemas(), "job-result.schema.json"),
+		SchemaPath:    a.schemaPath(job),
 		FinalJSONPath: filepath.Join(artifacts, "final.json"),
 		TimeoutS:      timeout,
 	}
@@ -250,7 +250,7 @@ func (a *Adapter) repair(actor string, job model.Job, workdir string, prior erro
 		req := runtime.Request{
 			JobID: job.JobID, Runtime: job.TargetRuntime, Workdir: workdir,
 			Prompt:        a.buildPrompt(job, workdir),
-			SchemaPath:    filepath.Join(a.L.Schemas(), "job-result.schema.json"),
+			SchemaPath:    a.schemaPath(job),
 			FinalJSONPath: filepath.Join(a.L.Artifacts(a.SID, job.JobID), "final.json"),
 			TimeoutS:      job.Budget.TimeoutS,
 			RepairOf:      prior.Error(),
@@ -328,6 +328,20 @@ func (a *Adapter) recordUsage(actor, jobID string, reported *int, r model.JobRes
 	_ = a.Eng.AppendInfo(actor, model.EvUsageReported, map[string]any{
 		"job_id": jobID, "tokens": tokens, "estimated": estimated,
 	})
+}
+
+// schemaPath picks the output schema for a runtime. codex's --output-schema goes
+// through OpenAI structured output, which requires every object to have
+// additionalProperties:false AND every property in `required`; the full
+// job-result schema (optional fields, a map-typed verification) violates that, so
+// codex gets a minimal strict schema covering just the contract fields. claude's
+// --json-schema is lenient and uses the full schema. (calibrated vs codex 0.135.0)
+func (a *Adapter) schemaPath(job model.Job) string {
+	f := "job-result.schema.json"
+	if job.TargetRuntime == model.RuntimeCodex {
+		f = "codex-output.schema.json"
+	}
+	return filepath.Join(a.L.Schemas(), f)
 }
 
 // buildPrompt renders the context packet as an actionable work order: a brief,

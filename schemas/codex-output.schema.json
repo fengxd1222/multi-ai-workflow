@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["job_id", "status", "summary"],
+  "properties": {
+    "job_id": { "type": "string" },
+    "status": { "type": "string", "enum": ["completed", "failed", "needs-human"] },
+    "summary": { "type": "string" }
+  }
+}
