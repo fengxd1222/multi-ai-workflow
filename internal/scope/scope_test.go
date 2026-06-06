@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fengxudong/harness/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
 )
 
 func TestMatch_GlobSemantics(t *testing.T) {

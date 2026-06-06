@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fengxudong/harness/internal/model"
-	"github.com/fengxudong/harness/internal/store"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
 )
 
 func newEvent(actor, typ, id, ts string) model.Event {

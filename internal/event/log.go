@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fengxudong/harness/internal/model"
-	"github.com/fengxudong/harness/internal/store"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
 )
 
 // Now returns an RFC3339 UTC timestamp with millisecond precision, used as the

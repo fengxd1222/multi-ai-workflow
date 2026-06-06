@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fengxudong/harness/internal/model"
-	"github.com/fengxudong/harness/internal/state"
-	"github.com/fengxudong/harness/internal/store"
-	"github.com/fengxudong/harness/internal/worktree"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/state"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
+	"github.com/fengxd1222/multi-ai-workflow/internal/worktree"
 )
 
 func boolp(b bool) *bool { return &b }

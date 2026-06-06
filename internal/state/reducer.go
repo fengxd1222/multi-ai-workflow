@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/fengxudong/harness/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
 )
 
 // State is the reduced view of all entities, derived purely from folded events.

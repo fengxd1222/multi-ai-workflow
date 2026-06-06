@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fengxudong/harness/internal/event"
-	"github.com/fengxudong/harness/internal/model"
-	"github.com/fengxudong/harness/internal/state"
-	"github.com/fengxudong/harness/internal/store"
-	"github.com/fengxudong/harness/internal/trellis"
+	"github.com/fengxd1222/multi-ai-workflow/internal/event"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/state"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
+	"github.com/fengxd1222/multi-ai-workflow/internal/trellis"
 )
 
 // DelegateSpec describes a job to create from a task (rev3 §8, §16). In the

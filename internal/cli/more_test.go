@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fengxudong/harness/internal/store"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
 )
 
 func TestSessionStart_NotInitialized(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	harness "github.com/fengxudong/harness"
-	"github.com/fengxudong/harness/internal/store"
+	harness "github.com/fengxd1222/multi-ai-workflow"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
 )
 
 const workflowContract = `# Workflow Contract (harness v1)

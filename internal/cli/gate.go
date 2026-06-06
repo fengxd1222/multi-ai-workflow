@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fengxudong/harness/internal/event"
-	"github.com/fengxudong/harness/internal/model"
-	"github.com/fengxudong/harness/internal/state"
-	"github.com/fengxudong/harness/internal/store"
-	"github.com/fengxudong/harness/internal/worktree"
+	"github.com/fengxd1222/multi-ai-workflow/internal/event"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/state"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
+	"github.com/fengxd1222/multi-ai-workflow/internal/worktree"
 )
 
 // GateList prints open and resolved gates (rev3 §14).

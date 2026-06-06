@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/fengxudong/harness/internal/event"
-	"github.com/fengxudong/harness/internal/model"
-	"github.com/fengxudong/harness/internal/store"
+	"github.com/fengxd1222/multi-ai-workflow/internal/event"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
 )
 
 // Engine performs serialized, CAS-checked state transitions for one session.

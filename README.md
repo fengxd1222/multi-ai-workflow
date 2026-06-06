@@ -22,8 +22,9 @@ touching your main working tree**.
 [Why](#why) · [Concepts](#concepts) · [How it works](#how-it-works) ·
 [Ground truth](#ground-truth) · [Install](#install) · [Quickstart](#quickstart) ·
 [Commands](#command-reference) · [The `.harness/` directory](#the-harness-directory) ·
-[Trellis](#trellis-integration) · [Hooks](#hooks-optional-advanced) ·
-[Testing](#testing) · [Architecture](#architecture) · [Walkthrough](#visual-walkthrough)
+[Trellis](#trellis-integration) · [Use in Claude Code / Codex](#use-inside-claude-code--codex) ·
+[Hooks](#hooks-optional-advanced) · [Testing](#testing) ·
+[Architecture](#architecture) · [Walkthrough](#visual-walkthrough)
 
 ---
 
@@ -125,23 +126,35 @@ delivery branch. The worker's behavior differed; the trust boundary didn't.
 
 ## Install
 
-harness is a single, dependency-free Go binary (schemas are embedded). On a
-fresh machine:
+harness is a single, dependency-free Go binary (schemas are embedded).
+Prerequisites: **Go 1.26+** and **git**.
+
+**One line (no clone):**
 
 ```bash
-# prerequisites: Go 1.26+ and git 2.x
-git clone <this-repo> harness && cd harness
+curl -fsSL https://raw.githubusercontent.com/fengxd1222/multi-ai-workflow/main/install-remote.sh | bash
+# choose a dir:  ... | bash -s -- /usr/local/bin
+```
 
-./install.sh                  # builds + installs to $(go env GOPATH)/bin,
-                              # then reports which runtime deps are present
-# or choose a dir:  ./install.sh /usr/local/bin   (may need sudo)
-# or with make:     make install
-# or by hand:       go build -o harness ./cmd/harness && mv harness ~/bin/
+**Go install:**
 
+```bash
+go install github.com/fengxd1222/multi-ai-workflow/cmd/harness@latest
+```
+
+**From a clone:**
+
+```bash
+git clone https://github.com/fengxd1222/multi-ai-workflow harness && cd harness
+./install.sh                  # build + install to GOPATH/bin + report runtime deps
+# or:  make install   ·   ./install.sh /usr/local/bin   ·   go build -o harness ./cmd/harness
+```
+
+```bash
 harness version
 ```
 
-Make sure the install dir is on `PATH` (the script prints the line to add if not).
+Make sure the install dir is on `PATH` (the scripts print the line to add if not).
 
 **Build prerequisites** (to *install* harness): **Go 1.26+** and **git**. Nothing
 else — there are no external Go modules.
@@ -348,6 +361,36 @@ venv/conda path or multi-word like `conda run -n env python`) → a self-executa
 script via its shebang → `python3`/`python`/`py` on PATH. If none resolve,
 write-back is skipped with a note — the run never fails. No `.trellis/`, no Trellis
 task, or no interpreter all degrade quietly.
+
+---
+
+## Use inside Claude Code / Codex
+
+A one-shot command that drives the whole loop (init → task → delegate → run →
+gate → verify → integrate → handoff) lives in [`integrations/`](integrations/).
+Install it into your agent:
+
+```bash
+./integrations/install-integrations.sh          # both, user-level
+# or: ./integrations/install-integrations.sh claude   (only Claude Code)
+# or: ./integrations/install-integrations.sh codex    (only Codex)
+```
+
+Then, from a session in your project (where `harness` is on PATH):
+
+```
+# Claude Code:  worker runtime is the first word
+/harness-delegate codex add input validation to the auth module
+
+# Codex:        same command, pick claude as the worker
+/harness-delegate claude add input validation to the auth module
+```
+
+The agent you're talking to becomes the **orchestrator** and drives `harness` via
+shell; the *worker* is whichever runtime you name, running in an isolated worktree.
+Nesting works (Claude Code orchestrating a `claude -p` worker, or either driving
+`codex exec`). Manual installs: Claude Code → `~/.claude/commands/` (or project
+`.claude/commands/`); Codex → `~/.codex/prompts/`.
 
 ---
 

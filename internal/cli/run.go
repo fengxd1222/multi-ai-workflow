@@ -7,13 +7,13 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/fengxudong/harness/internal/adapter"
-	"github.com/fengxudong/harness/internal/model"
-	"github.com/fengxudong/harness/internal/runtime"
-	"github.com/fengxudong/harness/internal/scope"
-	"github.com/fengxudong/harness/internal/state"
-	"github.com/fengxudong/harness/internal/store"
-	"github.com/fengxudong/harness/internal/trellis"
+	"github.com/fengxd1222/multi-ai-workflow/internal/adapter"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/runtime"
+	"github.com/fengxd1222/multi-ai-workflow/internal/scope"
+	"github.com/fengxd1222/multi-ai-workflow/internal/state"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
+	"github.com/fengxd1222/multi-ai-workflow/internal/trellis"
 )
 
 // Run drives one created job to a terminal state via the adapter (rev3 §8, §16).

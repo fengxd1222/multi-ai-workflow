@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fengxudong/harness/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
 )
 
 // Decision is the outcome of classifying one path.

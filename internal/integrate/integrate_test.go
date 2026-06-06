@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fengxudong/harness/internal/model"
-	"github.com/fengxudong/harness/internal/scope"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/scope"
 )
 
 func gitR(t *testing.T, dir string, args ...string) {

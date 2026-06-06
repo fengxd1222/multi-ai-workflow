@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/fengxudong/harness/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
 )
 
 // Run executes each command in workdir and returns a Verification record plus

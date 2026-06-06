@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fengxudong/harness/internal/cli"
+	"github.com/fengxd1222/multi-ai-workflow/internal/cli"
 )
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -206,10 +206,28 @@ func atoi(s string) int {
 func usage() {
 	fmt.Fprintln(os.Stderr, `harness v1 — multi-agent CLI harness
 
-usage:
-  harness init                 initialize .harness/ in the current git repo
-  harness session start        start a session, capture repo baseline
-  harness run --job <id>       run a created job to a terminal state
-  harness recover [--session]  rebuild views from the event log
+setup:
+  harness init                       initialize .harness/ in the current git repo
+  harness session start              start a session, capture repo baseline
+
+work:
+  harness task create --title …      create a task  [--accept …] [--budget n]
+  harness task phase --task … --to … advance task phase
+  harness delegate --task … --role … --runtime codex|claude …   create a job
+                                     [--goal/--brief/--allow/--deny/--constraint/
+                                      --context/--from/--verify/--trellis-task]
+  harness run --job <id>             run a created job to a terminal state
+  harness verify --task … --cmd …    CLI-run task verification
+  harness integrate --task <id>      merge job branches → delivery branch
+  harness handoff --task <id>        render handoff.md
+
+exceptions & recovery:
+  harness gate list|show|approve|reject     human-gate management
+  harness recover [--session]               rebuild views; reconcile stale jobs
+
+hooks (runtime-side):
+  harness guard pretool|posttool …          PreToolUse / PostToolUse guards
+  harness hook task-stop --role …           Stop / TaskCompleted gate
+
   harness version`)
 }

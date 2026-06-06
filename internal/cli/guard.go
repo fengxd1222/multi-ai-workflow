@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/fengxudong/harness/internal/guard"
-	"github.com/fengxudong/harness/internal/model"
-	"github.com/fengxudong/harness/internal/scope"
-	"github.com/fengxudong/harness/internal/state"
-	"github.com/fengxudong/harness/internal/store"
+	"github.com/fengxd1222/multi-ai-workflow/internal/guard"
+	"github.com/fengxd1222/multi-ai-workflow/internal/model"
+	"github.com/fengxd1222/multi-ai-workflow/internal/scope"
+	"github.com/fengxd1222/multi-ai-workflow/internal/state"
+	"github.com/fengxd1222/multi-ai-workflow/internal/store"
 )
 
 // GuardPretool is the PreToolUse entry point (rev3 §10 §11): it parses the hook
