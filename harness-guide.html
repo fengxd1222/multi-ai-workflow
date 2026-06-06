@@ -220,6 +220,7 @@ gate 处理后: needs-human ──▶ created(重跑) | cancelled(放弃)</pre><
       <table>
         <tr><td><code>harness gate list | show --gate G | approve --gate G [--option …] [--files …] | reject --gate G</code></td><td>人工 gate 处理</td></tr>
         <tr><td><code>harness recover [--session]</code></td><td>从事件日志重建视图;回收 stale job / 清孤儿 worktree</td></tr>
+        <tr><td><code>harness prune [--session]</code></td><td>回收所有终态写 job 的 worktree(保留分支),防膨胀</td></tr>
       </table>
       <h3>④ hooks（runtime 侧）</h3>
       <table>
@@ -326,8 +327,10 @@ harness gate reject --gate G-1</pre></div>
       </div>
       <div class="panelbox" data-p="c5">
         <p>worker 被 kill / 进程崩溃 / 终端被关后:</p>
-        <div class="code"><pre>harness recover</pre></div>
-        <p class="d" style="color:var(--dim)">从事件日志重建所有视图;探活(pid+boot-id)判定 stale job → 丢弃其 worktree 并重置/熔断;清理孤儿 worktree。互斥(recover.lock)且幂等。工作树回滚只靠 git，逻辑状态只靠 event replay。</p>
+        <div class="code"><pre>harness recover            <span class="cm"># 崩溃后恢复</span>
+harness prune              <span class="cm"># 回收终态 job 的 worktree(防膨胀)</span></pre></div>
+        <p class="d" style="color:var(--dim)">recover:从事件日志重建所有视图;探活(pid+boot-id)判定 stale job → 丢弃其 worktree 并重置/熔断;清理孤儿 worktree。互斥(recover.lock)且幂等。工作树回滚只靠 git，逻辑状态只靠 event replay。</p>
+        <p class="good note"><b>worktree 不膨胀:</b> 每个写 job 一个 <code>.worktrees/&lt;jid&gt;</code>(git worktree 共享 .git，每个仅一份工作区 checkout)。<code>integrate</code> 成功后自动回收已合并 job 的 worktree、<code>prune</code> 回收所有终态写 job 的、<code>recover</code> 清 stale/孤儿 —— 三者都<b>保留 <code>job/&lt;id&gt;</code> 分支</b>(轻量可回溯);needs-human/running 的 worktree 保留为现场。</p>
       </div>
     </section>
 
