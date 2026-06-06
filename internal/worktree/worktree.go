@@ -43,11 +43,21 @@ func Add(repoRoot, jid string) (Info, error) {
 
 // Remove tears a worktree down idempotently: remove --force, prune, then delete
 // the residual branch so a later re-dispatch can re-add the same job id without
-// a "branch already exists" fatal (rev3 §15, fixes N16).
+// a "branch already exists" fatal (rev3 §15, fixes N16). Use for abandoned /
+// stale / rejected jobs.
 func Remove(repoRoot, jid string) error {
 	_, _ = git(repoRoot, "worktree", "remove", "--force", Path(repoRoot, jid))
 	_, _ = git(repoRoot, "worktree", "prune")
 	_, _ = git(repoRoot, "branch", "-D", Branch(jid))
+	return nil
+}
+
+// RemoveWorktreeOnly reclaims the disk-heavy file checkout but KEEPS the
+// job/<jid> branch, so the work stays referenceable and re-integratable. Used to
+// stop worktrees accumulating after a successful integrate and by `harness prune`.
+func RemoveWorktreeOnly(repoRoot, jid string) error {
+	_, _ = git(repoRoot, "worktree", "remove", "--force", Path(repoRoot, jid))
+	_, _ = git(repoRoot, "worktree", "prune")
 	return nil
 }
 

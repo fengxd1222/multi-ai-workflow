@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>harness · 调用机制 / 命令 / 使用场景</title>
+<style>
+  :root{
+    --bg:#0c1018; --panel:#121826; --panel2:#0a0e16; --line:#2a3550;
+    --txt:#cdd6e6; --dim:#7d89a3; --on:#4f8cff; --ok:#37d39a; --warn:#ffb454;
+    --bad:#ff6b6b; --acc:#9b7bff; --codebg:#0a0e16;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:14.5px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",ui-sans-serif,sans-serif}
+  code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  a{color:var(--on);text-decoration:none} a:hover{text-decoration:underline}
+
+  .layout{display:grid;grid-template-columns:236px 1fr;max-width:1180px;margin:0 auto}
+  @media(max-width:880px){.layout{grid-template-columns:1fr}}
+
+  /* nav */
+  nav{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;
+    padding:22px 14px;border-right:1px solid var(--line)}
+  @media(max-width:880px){nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)}}
+  nav .brand{font-weight:800;font-size:18px;color:#fff;letter-spacing:.3px;margin-bottom:2px}
+  nav .tag{color:var(--dim);font-size:11.5px;margin-bottom:16px}
+  nav a{display:block;color:var(--dim);font-size:13px;padding:5px 9px;border-radius:7px;border-left:2px solid transparent}
+  nav a:hover{color:var(--txt);text-decoration:none;background:#161d2e}
+  nav a.active{color:#fff;background:#18233f;border-left-color:var(--on)}
+
+  main{padding:30px 30px 80px;min-width:0}
+  section{margin-bottom:42px;scroll-margin-top:14px}
+  h2{font-size:21px;color:#fff;margin:0 0 4px;letter-spacing:.2px}
+  h2 .n{color:var(--acc);font-size:13px;margin-right:8px}
+  h3{font-size:15px;color:#e7edf8;margin:20px 0 8px}
+  .lead{color:var(--dim);margin:0 0 14px}
+  p{margin:9px 0}
+  hr{border:none;border-top:1px solid var(--line);margin:34px 0}
+
+  .pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;border:1px solid var(--line);color:var(--dim);margin:0 4px 4px 0}
+  .pill.on{color:var(--on);border-color:var(--on)} .pill.ok{color:var(--ok);border-color:var(--ok)}
+  .pill.acc{color:var(--acc);border-color:var(--acc)} .pill.warn{color:var(--warn);border-color:var(--warn)}
+
+  /* code blocks with copy */
+  .code{position:relative;background:var(--codebg);border:1px solid var(--line);border-radius:9px;margin:10px 0}
+  .code pre{margin:0;padding:12px 14px;overflow:auto;font-size:12.8px;color:#d6e2f5}
+  .code .cp{position:absolute;top:7px;right:7px;background:#1b2540;border:1px solid var(--line);
+    color:#cdd6e6;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer}
+  .code .cp:hover{border-color:var(--on)} .code .cp.done{color:var(--ok);border-color:var(--ok)}
+  .cm{color:#5f6f8c} .k{color:#9b7bff} .s{color:#37d39a} .f{color:#4f8cff}
+
+  .grid{display:grid;gap:12px}
+  .g2{grid-template-columns:1fr 1fr} .g3{grid-template-columns:1fr 1fr 1fr}
+  @media(max-width:700px){.g2,.g3{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:14px 16px}
+  .card h4{margin:0 0 6px;font-size:14px;color:#fff}
+  .card .d{color:var(--dim);font-size:12.5px}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.5px}
+  td code{color:#9fd0ff;font-size:12.5px}
+
+  .flow{background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:14px;overflow:auto}
+  .flow pre{margin:0;font-size:12px;color:#aebfda;line-height:1.5}
+
+  .roles{display:grid;grid-template-columns:1fr;gap:10px}
+  .role{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .role .ic{font-size:22px;line-height:1} .role .b{font-weight:700;color:#fff}
+  .role .d{color:var(--dim);font-size:12.8px}
+
+  /* tabs */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+  .tab{background:#161d2e;border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}
+  .tab.active{background:#23407a;border-color:var(--on);color:#fff}
+  .panelbox{display:none} .panelbox.active{display:block}
+
+  .note{border-left:3px solid var(--warn);background:#1a1710;border-radius:0 8px 8px 0;padding:9px 13px;color:#e8d9bf;font-size:13px;margin:10px 0}
+  .good{border-left-color:var(--ok);background:#0f1a14;color:#bfe8d2}
+  .callout{border-left-color:var(--on);background:#0e1730;color:#cfe0ff}
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav>
+    <div class="brand">harness</div>
+    <div class="tag">调用机制 · 命令 · 场景</div>
+    <a href="#overview">概览</a>
+    <a href="#mechanism">调用机制</a>
+    <a href="#install">安装</a>
+    <a href="#commands">命令全集</a>
+    <a href="#loop">完整闭环</a>
+    <a href="#cases">使用场景</a>
+    <a href="#agents">在 Claude Code / Codex 里用</a>
+    <a href="#trust">信任边界（求真）</a>
+    <a href="#trellis">搭配 Trellis</a>
+  </nav>
+
+  <main>
+    <!-- OVERVIEW -->
+    <section id="overview">
+      <h2><span class="n">00</span>概览</h2>
+      <p class="lead">本地、无 daemon、无数据库的多 agent CLI harness。把一个任务拆成 job，
+      每个写 job 在<b>独立 git worktree</b> 里由真实 CLI(codex / claude)执行，harness 负责
+      验证、集成、交接成一个分支 —— <b>全程不碰你的主工作树</b>。</p>
+      <div class="roles">
+        <div class="role"><div class="ic">🧠</div><div><div class="b">orchestrator（编排者）</div>
+          <div class="d">你正在对话的那个 LLM 会话（Claude Code / Codex / 你自己）。决定<i>做什么</i>，用 shell 调 harness。提议，不直接写状态。</div></div></div>
+        <div class="role"><div class="ic">⌨️</div><div><div class="b">harness CLI（裁判）</div>
+          <div class="d">确定性 Go 程序。状态机 / scope / gate / verify 全由它裁决，唯一能写 <code>.harness/</code>。</div></div></div>
+        <div class="role"><div class="ic">🤖</div><div><div class="b">runtime（工人）</div>
+          <div class="d"><code>claude</code> 或 <code>codex</code>。在隔离 worktree 里真正改代码，由 <code>--runtime</code> 指定。两者可互换。</div></div></div>
+      </div>
+      <p style="margin-top:14px"><span class="pill on">协议先于运行时</span><span class="pill acc">events 是唯一真相</span>
+      <span class="pill ok">LLM 提议 · CLI 裁决</span><span class="pill warn">worktree 写隔离</span>
+      <span class="pill">worker 自报不可信 · git 求真</span></p>
+      <p class="lead" style="margin-top:8px">想看单次 <code>harness run</code> 的逐帧动画 →
+      <a href="harness-flow.html">harness-flow.html</a></p>
+    </section>
+
+    <hr>
+
+    <!-- MECHANISM -->
+    <section id="mechanism">
+      <h2><span class="n">01</span>调用机制</h2>
+      <p class="lead">「A 指挥 B」= 编排者是 A、worker 是 B(<code>--runtime B</code>)。命令完全一样，
+      只换「你坐在哪个会话」+「<code>--runtime</code> 填谁」——这就是双向对等。</p>
+      <div class="flow"><pre>
+  你/agent (orchestrator) ──shell──▶ harness CLI  ──spawn──▶ runtime (worker)
+        │ 提议 what                     │ 裁决/求真            │ 在 worktree 改代码
+        │                              ▼                      ▼
+        │                     .harness/ events(真相)     .worktrees/job-id (隔离)
+        │                          + views(可重建)             │ commit → job/&lt;id&gt;
+        ▼                                                       ▼
+   review 交付分支 ◀── integrate(merge) ◀── ground truth: git diff + 重跑 verify
+   harness/integration/&lt;task&gt;                                你的主工作树: 从不被写
+      </pre></div>
+      <h3>六条铁律</h3>
+      <table>
+        <tr><td><b>LLM 提议，CLI 裁决</b></td><td>状态机/scope/gate/verify 判定全在确定性 CLI，绝不进 prompt。</td></tr>
+        <tr><td><b>events 是唯一真相</b></td><td>每 actor 一个 append-only 日志；所有 JSON 视图可重建。崩溃/compact/resume 都能恢复。</td></tr>
+        <tr><td><b>worker 自报不可信</b></td><td><code>changed_files</code>/<code>verification</code>/<code>usage</code> 仅供参考；真相由 <code>git diff</code> + 重跑检查确立。</td></tr>
+        <tr><td><b>worktree 写隔离</b></td><td>每个写 job 一个 worktree + <code>job/&lt;id&gt;</code> 分支；崩溃恢复=丢弃 worktree。</td></tr>
+        <tr><td><b>永不写主工作树</b></td><td>结果交付在 <code>harness/integration/&lt;task&gt;</code> 分支，等你 merge。</td></tr>
+        <tr><td><b>push 委派</b></td><td>orchestrator spawn 即派定，无队列、无抢单。</td></tr>
+      </table>
+      <h3>job 状态机</h3>
+      <div class="code"><pre>created ──▶ running ──┬─▶ completed
+                      ├─▶ failed
+                      ├─▶ needs-human   <span class="cm"># 越权/失败 → 开 gate</span>
+                      └─▶ timeout
+gate 处理后: needs-human ──▶ created(重跑) | cancelled(放弃)</pre></div>
+    </section>
+
+    <hr>
+
+    <!-- INSTALL -->
+    <section id="install">
+      <h2><span class="n">02</span>安装</h2>
+      <p class="lead">单个零依赖 Go 二进制(schema 内嵌)。前提:<b>Go 1.26+</b> 和 <b>git</b>。</p>
+      <div class="tabs" data-tabs="install">
+        <div class="tab active" data-t="i1">① 一行（不用 clone）</div>
+        <div class="tab" data-t="i2">② go install</div>
+        <div class="tab" data-t="i3">③ clone 后装</div>
+      </div>
+      <div class="panelbox active" data-p="i1">
+        <div class="code"><pre>curl -fsSL https://raw.githubusercontent.com/fengxd1222/multi-ai-workflow/main/install-remote.sh | bash
+<span class="cm"># 指定目录:  ... | bash -s -- /usr/local/bin</span></pre></div>
+      </div>
+      <div class="panelbox" data-p="i2">
+        <div class="code"><pre>go install github.com/fengxd1222/multi-ai-workflow/cmd/harness@latest</pre></div>
+      </div>
+      <div class="panelbox" data-p="i3">
+        <div class="code"><pre>git clone https://github.com/fengxd1222/multi-ai-workflow harness &amp;&amp; cd harness
+./install.sh                 <span class="cm"># build + 装到 GOPATH/bin + 检测运行时依赖</span>
+<span class="cm"># 或: make install  ·  ./install.sh /usr/local/bin</span></pre></div>
+      </div>
+      <p>验证: <code>harness version</code>。确保安装目录在 <code>PATH</code>(脚本会提示要加的行)。</p>
+      <h3>运行时依赖（用的时候才需要）</h3>
+      <table>
+        <tr><th>工具</th><th>用途</th><th>必须?</th></tr>
+        <tr><td><code>git</code></td><td>仓库 / worktree / diff</td><td>是</td></tr>
+        <tr><td><code>claude</code> / <code>codex</code></td><td>worker runtime(<code>HARNESS_CLAUDE_BIN</code>/<code>HARNESS_CODEX_BIN</code> 可覆盖)</td><td>至少一个</td></tr>
+        <tr><td><code>python3</code></td><td>仅 Trellis 回写(<code>HARNESS_PYTHON</code> 可覆盖)</td><td>可选</td></tr>
+        <tr><td><code>trellis</code></td><td>知识/规范层</td><td>可选</td></tr>
+      </table>
+    </section>
+
+    <hr>
+
+    <!-- COMMANDS -->
+    <section id="commands">
+      <h2><span class="n">03</span>命令全集</h2>
+      <p class="lead">按阶段分组。<code>--session</code> 省略时默认用最近的 session。</p>
+
+      <h3>① setup</h3>
+      <table>
+        <tr><td><code>harness init</code></td><td>在当前 git repo 建 <code>.harness/</code>(schema/reserved/contract);非 git 仓拒绝</td></tr>
+        <tr><td><code>harness session start</code></td><td>开 session，捕获仓库基线</td></tr>
+      </table>
+      <h3>② work（委派与执行）</h3>
+      <table>
+        <tr><td><code>harness task create --title T [--accept A] [--budget N]</code></td><td>建任务</td></tr>
+        <tr><td><code>harness task phase --task T --to PHASE</code></td><td>推进 task phase(CLI 校验合法性)</td></tr>
+        <tr><td><code>harness delegate --task T --role R --runtime codex|claude …</code></td><td>建 job(见下方常用参数)</td></tr>
+        <tr><td><code>harness run --job J</code></td><td>把 created job 跑到终态</td></tr>
+        <tr><td><code>harness verify --task T --cmd C [--cmd …]</code></td><td>CLI 实跑任务级验证 → verification.json</td></tr>
+        <tr><td><code>harness integrate --task T</code></td><td>合并 job 分支 → <code>harness/integration/T</code></td></tr>
+        <tr><td><code>harness handoff --task T</code></td><td>渲染 handoff.md(jobs/验证/交付分支)</td></tr>
+      </table>
+      <p><b>delegate 常用参数:</b>
+        <span class="pill">--goal 一句目标</span><span class="pill">--brief 背景</span>
+        <span class="pill">--allow 'src/**' 可写范围</span><span class="pill">--deny package.json</span>
+        <span class="pill">--verify '验收命令'</span><span class="pill">--constraint 约束</span>
+        <span class="pill">--context 文件</span><span class="pill">--from J-分析job</span>
+        <span class="pill acc">--trellis-task slug</span></p>
+      <h3>③ 异常 &amp; 恢复</h3>
+      <table>
+        <tr><td><code>harness gate list | show --gate G | approve --gate G [--option …] [--files …] | reject --gate G</code></td><td>人工 gate 处理</td></tr>
+        <tr><td><code>harness recover [--session]</code></td><td>从事件日志重建视图;回收 stale job / 清孤儿 worktree</td></tr>
+      </table>
+      <h3>④ hooks（runtime 侧）</h3>
+      <table>
+        <tr><td><code>harness guard pretool|posttool …</code></td><td>PreToolUse 路径闸门 / PostToolUse diff 复核</td></tr>
+        <tr><td><code>harness hook task-stop --role worker|orchestrator …</code></td><td>Stop / TaskCompleted 闸门</td></tr>
+      </table>
+      <p style="margin-top:10px"><b>退出码:</b> <code>0</code> ok · <code>10</code> blocked-policy ·
+      <code>12</code> needs-human · <code>20</code> verify-failed · <code>22</code> result-invalid ·
+      <code>30</code> state-corrupt · <code>31</code> lock-timeout · <code>32</code> cas-retry ·
+      <code>40</code> runtime-exec-failed · <code>41</code> budget-exceeded · <code>42</code> delegation-loop ·
+      <code>64</code> usage/非 git 仓。</p>
+    </section>
+
+    <hr>
+
+    <!-- LOOP -->
+    <section id="loop">
+      <h2><span class="n">04</span>完整闭环</h2>
+      <p class="lead">一个 task 从创建到交付分支的完整命令序列(真实验证过)。</p>
+      <div class="code"><pre><span class="cm"># 0. 一个有提交的 git 仓</span>
+cd your-project &amp;&amp; git init -q &amp;&amp; git add -A &amp;&amp; git commit -m init
+
+<span class="cm"># 1. 初始化 + 开 session</span>
+harness init
+harness session start
+
+<span class="cm"># 2. 建任务</span>
+harness task create --title "add a hello file" --accept "src/hello.txt exists"
+<span class="cm">#  -> created task T-2026...</span>
+
+<span class="cm"># 3. 委派一个写 job 给某 runtime</span>
+harness delegate --task T-2026... --role implementation --runtime codex \
+  --goal 'Create src/hello.txt containing: hello harness' \
+  --allow 'src/**' --verify 'test -f src/hello.txt'
+<span class="cm">#  -> delegated J-2026...</span>
+
+<span class="cm"># 4. 执行 — worker 在隔离 worktree 改, CLI 抽结果+求真</span>
+harness run --job J-2026...
+<span class="cm">#  -> job J-2026... -> completed (ok)   [越权/失败则 needs-human]</span>
+
+<span class="cm"># 5. 任务级验证 + 集成 + 交接</span>
+harness verify   --task T-2026... --cmd 'test -f src/hello.txt'
+harness integrate --task T-2026...    <span class="cm"># -> harness/integration/T-2026...</span>
+harness handoff  --task T-2026...
+
+<span class="cm"># 6. review 交付分支并 merge 进你的分支</span>
+git merge harness/integration/T-2026...</pre></div>
+      <p class="callout note">全程你的主工作树保持干净 —— 改动只在 <code>job/J-…</code> 和
+      <code>harness/integration/T-…</code> 上，直到你 merge。</p>
+    </section>
+
+    <hr>
+
+    <!-- USE CASES -->
+    <section id="cases">
+      <h2><span class="n">05</span>使用场景</h2>
+      <div class="tabs" data-tabs="cases">
+        <div class="tab active" data-t="c1">Claude 指挥 Codex</div>
+        <div class="tab" data-t="c2">Codex 指挥 Claude</div>
+        <div class="tab" data-t="c3">research → implement</div>
+        <div class="tab" data-t="c4">gate 处理</div>
+        <div class="tab" data-t="c5">崩溃恢复</div>
+      </div>
+
+      <div class="panelbox active" data-p="c1">
+        <p>你在 <b>Claude Code</b> 会话里(Claude=编排者)，让它把活交给 codex 做:</p>
+        <div class="code"><pre>harness delegate --task T-1 --role implementation --runtime <span class="f">codex</span> \
+  --goal "重构 src/auth，保持 API 兼容" --allow 'src/auth/**,tests/**' --verify 'npm test -- auth'
+harness run --job J-1            <span class="cm"># 在 worktree 里 spawn codex 干活</span>
+harness verify --task T-1 --cmd 'npm test'
+harness integrate --task T-1 &amp;&amp; harness handoff --task T-1</pre></div>
+        <p class="d" style="color:var(--dim)">codex 在隔离 worktree 写代码，Claude Code 负责拆任务/推进/读结果/处理 gate。</p>
+      </div>
+      <div class="panelbox" data-p="c2">
+        <p>你在 <b>Codex</b> 会话里(Codex=编排者)，同样的命令，只把 <code>--runtime</code> 换成 claude:</p>
+        <div class="code"><pre>harness delegate --task T-1 --role implementation --runtime <span class="f">claude</span> \
+  --goal "..." --allow 'src/**' --verify '...'
+harness run --job J-1            <span class="cm"># 在 worktree 里 spawn claude 干活</span></pre></div>
+        <p class="d" style="color:var(--dim)">命令一字不差，只换了 <code>--runtime</code> 和你所在的会话。这就是双向对等。</p>
+      </div>
+      <div class="panelbox" data-p="c3">
+        <p>先派一个<b>只读 analysis job</b> 勘探代码(产出 findings)，再把它喂给 implement job —— 把「理解」当数据传递，worker 不靠冷启动瞎猜:</p>
+        <div class="code"><pre><span class="cm"># 1) 勘探(read-only)，结果落 findings/&lt;jid&gt;.md</span>
+RJ=$(harness delegate --task T-1 --role analysis --runtime claude \
+      --goal "勘探 auth: 公开API/必保错误码/薄弱点/改动建议(file:line)" --allow 'src/**')
+harness run --job $RJ
+
+<span class="cm"># 2) 实现，--from 把上一步 findings 注入 worker 的必读清单</span>
+harness delegate --task T-1 --role implementation --runtime codex \
+  --from $RJ --context 'src/auth/service.js' \
+  --goal "给 login 加输入校验" --constraint '保留错误码值不变' \
+  --allow 'src/auth/**' --verify '...'</pre></div>
+        <p class="good note">效果差异:薄 goal → worker 瞎猜;富 packet(brief+约束+必读文件+验收) → worker 基于真实勘探实现，跨 runtime 理解差异在 grounding + 验收两端被吸收。</p>
+      </div>
+      <div class="panelbox" data-p="c4">
+        <p>worker 越权写 / verify 失败 / 集成冲突 → job 进 <code>needs-human</code> 并开 gate:</p>
+        <div class="code"><pre>harness gate list
+harness gate show --gate G-1
+<span class="cm"># 批准额外文件并重跑:</span>
+harness gate approve --gate G-1 --option approve_extra_files --files 'config/**'
+<span class="cm"># 或放弃该 job 的改动(标 cancelled, 丢弃 worktree):</span>
+harness gate reject --gate G-1</pre></div>
+        <p class="d" style="color:var(--dim)">resolve 后 job 移出 needs-human(重跑或取消)，不再卡 task 完成;每次都打印下一步命令。scope/secrets 由你拍板，CLI 不替你决定。</p>
+      </div>
+      <div class="panelbox" data-p="c5">
+        <p>worker 被 kill / 进程崩溃 / 终端被关后:</p>
+        <div class="code"><pre>harness recover</pre></div>
+        <p class="d" style="color:var(--dim)">从事件日志重建所有视图;探活(pid+boot-id)判定 stale job → 丢弃其 worktree 并重置/熔断;清理孤儿 worktree。互斥(recover.lock)且幂等。工作树回滚只靠 git，逻辑状态只靠 event replay。</p>
+      </div>
+    </section>
+
+    <hr>
+
+    <!-- AGENTS -->
+    <section id="agents">
+      <h2><span class="n">06</span>在 Claude Code / Codex 里用</h2>
+      <p class="lead">一句话驱动整条闭环(init→task→delegate→run→gate→verify→integrate→handoff)。</p>
+      <div class="code"><pre><span class="cm"># 装 slash command / custom prompt 到用户级</span>
+./integrations/install-integrations.sh           <span class="cm"># 两者都装</span>
+<span class="cm"># 或: ./integrations/install-integrations.sh claude | codex</span></pre></div>
+      <p>然后在你项目的会话里(<code>harness</code> 在 PATH 上):</p>
+      <div class="code"><pre><span class="cm"># Claude Code — 第一个词是 worker runtime</span>
+/harness-delegate codex 给 auth 模块加输入校验
+
+<span class="cm"># Codex — 同样的命令，选 claude 当 worker</span>
+/harness-delegate claude 给 auth 模块加输入校验</pre></div>
+      <table>
+        <tr><th>agent</th><th>装到</th><th>机制</th></tr>
+        <tr><td>Claude Code</td><td><code>~/.claude/commands/harness-delegate.md</code></td><td>slash command + <code>$ARGUMENTS</code></td></tr>
+        <tr><td>Codex</td><td><code>~/.codex/prompts/harness-delegate.md</code></td><td>custom prompt + <code>$ARGUMENTS</code>/<code>$1</code></td></tr>
+      </table>
+      <p class="d" style="color:var(--dim)">你对话的 agent 当 orchestrator，worker 是你点名的另一个 runtime，跑在隔离 worktree。嵌套可行(Claude Code 编排 <code>claude -p</code> worker，或任一方驱动 <code>codex exec</code>)。</p>
+    </section>
+
+    <hr>
+
+    <!-- TRUST -->
+    <section id="trust">
+      <h2><span class="n">07</span>信任边界（求真）</h2>
+      <p class="lead">harness 从不信 worker <i>说</i>自己干了什么。每个 job 后由确定性 CLI 亲自确立事实:</p>
+      <table>
+        <tr><td><b>改了哪些文件</b></td><td><code>git diff &lt;base&gt;</code> 求真 — 不信 worker 的 <code>changed_files</code></td></tr>
+        <tr><td><b>验证是否通过</b></td><td>CLI <b>重跑</b> verify 命令 — 不信 worker 的 <code>"verification":"passed"</code></td></tr>
+        <tr><td><b>token 用量</b></td><td>取 runtime 自身账目;缺失则保守估并 gate</td></tr>
+      </table>
+      <p class="good note"><b>真实例子:</b> codex 会自带 <code>.serena/</code> 工具文件写到 scope 外，claude 不会。同一套
+      <code>git diff</code> 复核抓到了 codex 的越界文件 → job 进 needs-human + gate，<b>而不是</b>把它们偷偷带进交付分支。
+      worker 行为不同，信任边界不变。</p>
+    </section>
+
+    <hr>
+
+    <!-- TRELLIS -->
+    <section id="trellis">
+      <h2><span class="n">08</span>搭配 Trellis</h2>
+      <p class="lead">Trellis 管知识/规范/journal/task 编排;harness 接管「隔离执行 + 求真验收」。
+      <code>.trellis/</code> 两边共用，<b>零迁移</b>。</p>
+      <h3>消费 Trellis task(把它变成 harness 工单)</h3>
+      <div class="code"><pre>harness delegate --task T-1 --role implementation --runtime claude \
+  --trellis-task 05-12-xterm --allow 'src/**'
+<span class="cm"># 自动读 .trellis/tasks/05-12-xterm/ :</span>
+<span class="cm">#   task.json.title    → job goal</span>
+<span class="cm">#   prd.md             → job brief(需求+验收)</span>
+<span class="cm">#   implement.jsonl    → context_refs(worker 先 Read 的 spec/文件)</span></pre></div>
+      <p>已在 Trellis 里 <code>task.py start</code> 了某 task? 省掉 <code>--trellis-task</code>，harness 经 <code>task.py current</code> 自动关联。</p>
+      <h3>回写(走 Trellis 自己的脚本，格式永不漂移)</h3>
+      <table>
+        <tr><td><code>task.py set-branch</code></td><td>把 job 分支记到 task.json(不 git commit)</td></tr>
+        <tr><td><code>add_session.py --no-commit</code></td><td>写 journal(不替你 commit)</td></tr>
+      </table>
+      <p class="note"><b>python 解释器不写死:</b> <code>$HARNESS_PYTHON</code> → 脚本 shebang 自执行 →
+      PATH 探 <code>python3/python/py</code> → 都没则跳过回写+提示。<code>start/finish/archive</code>
+      不自动调(归你在 Trellis 侧 <code>/trellis:finish-work</code> 驱动)。</p>
+    </section>
+
+  </main>
+</div>
+
+<script>
+// copy buttons
+document.querySelectorAll('.code').forEach(box=>{
+  const pre=box.querySelector('pre');
+  const b=document.createElement('button'); b.className='cp'; b.textContent='复制';
+  b.onclick=()=>{ navigator.clipboard.writeText(pre.innerText).then(()=>{
+    b.textContent='已复制'; b.classList.add('done');
+    setTimeout(()=>{b.textContent='复制';b.classList.remove('done')},1200);
+  });};
+  box.appendChild(b);
+});
+// tabs
+document.querySelectorAll('.tabs').forEach(group=>{
+  const key=group.dataset.tabs;
+  group.querySelectorAll('.tab').forEach(tab=>{
+    tab.onclick=()=>{
+      group.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll(`[data-p]`).forEach(p=>{
+        if(p.dataset.p && p.dataset.p[0]===tab.dataset.t[0] && isSibling(group,p)) p.classList.remove('active');
+      });
+      // activate matching panel within the same section
+      const sec=group.closest('section');
+      sec.querySelectorAll('.panelbox').forEach(p=>p.classList.toggle('active', p.dataset.p===tab.dataset.t));
+    };
+  });
+});
+function isSibling(group,p){ return group.closest('section')===p.closest('section'); }
+// scrollspy
+const links=[...document.querySelectorAll('nav a')];
+const map=Object.fromEntries(links.map(a=>[a.getAttribute('href').slice(1),a]));
+const obs=new IntersectionObserver(es=>{
+  es.forEach(e=>{ if(e.isIntersecting){ links.forEach(a=>a.classList.remove('active')); map[e.target.id]?.classList.add('active'); }});
+},{rootMargin:'-10% 0px -80% 0px'});
+document.querySelectorAll('section[id]').forEach(s=>obs.observe(s));
+</script>
+</body>
+</html>

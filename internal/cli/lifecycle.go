@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/fengxd1222/multi-ai-workflow/internal/event"
@@ -12,6 +13,7 @@ import (
 	"github.com/fengxd1222/multi-ai-workflow/internal/state"
 	"github.com/fengxd1222/multi-ai-workflow/internal/store"
 	"github.com/fengxd1222/multi-ai-workflow/internal/verify"
+	"github.com/fengxd1222/multi-ai-workflow/internal/worktree"
 )
 
 // VerifyTask runs task-level verification commands itself and writes
@@ -71,7 +73,19 @@ func Integrate(dir, sid, taskID string) error {
 	_ = eng.AppendInfo("orchestrator", model.EvIntegrateDone, map[string]any{
 		"task_id": taskID, "integration_branch": res.IntegrationBranch, "merged": res.Merged,
 	})
-	fmt.Printf("integrated task %s: %d job(s) -> %s\n", taskID, len(res.Merged), res.IntegrationBranch)
+
+	// Reclaim each merged job's worktree (the change is now on the delivery
+	// branch). Keep the job/<id> branch — it's cheap and re-integratable; only the
+	// disk-heavy checkout goes. This stops worktrees accumulating.
+	reclaimed := 0
+	for _, jid := range res.Merged {
+		if _, err := os.Stat(worktree.Path(root, jid)); err == nil {
+			_ = worktree.RemoveWorktreeOnly(root, jid)
+			reclaimed++
+		}
+	}
+	fmt.Printf("integrated task %s: %d job(s) -> %s (reclaimed %d worktree(s))\n",
+		taskID, len(res.Merged), res.IntegrationBranch, reclaimed)
 	return nil
 }
 

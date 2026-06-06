@@ -127,6 +127,9 @@ func run(args []string) int {
 	case "recover":
 		return report(cli.Recover(cwd, flagValue(args[1:], "--session")))
 
+	case "prune":
+		return report(cli.Prune(cwd, flagValue(args[1:], "--session")))
+
 	case "version", "--version", "-v":
 		fmt.Println("harness v1")
 		return cli.ExitOK
@@ -224,6 +227,7 @@ work:
 exceptions & recovery:
   harness gate list|show|approve|reject     human-gate management
   harness recover [--session]               rebuild views; reconcile stale jobs
+  harness prune [--session]                 reclaim worktrees of terminal jobs (keep branches)
 
 hooks (runtime-side):
   harness guard pretool|posttool …          PreToolUse / PostToolUse guards

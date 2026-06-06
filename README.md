@@ -284,6 +284,24 @@ Rebuilds all views from the event log, then: discards worktrees of stale jobs
 (dead worker, detected via pid + boot-id) and resets/escalates them, and prunes
 orphan worktrees. `recover` is mutually exclusive (recover.lock) and idempotent.
 
+### Reclaiming worktrees
+
+Each write job runs in its own `.worktrees/<jid>` checkout (git worktrees share
+the repo's `.git` object store, so the cost is one working-file checkout each, not
+a full clone). They are reclaimed automatically and on demand so they don't pile
+up:
+
+- **`harness integrate`** removes the worktree of every merged job (keeping its
+  `job/<id>` branch — cheap and re-integratable).
+- **`harness prune`** reclaims the worktrees of all terminal write jobs
+  (completed / failed / timeout / cancelled), keeping branches. `needs-human` and
+  running jobs are left intact (their worktree is the evidence / live work).
+- **`harness recover`** clears stale and orphan worktrees.
+
+```bash
+harness prune              # manual GC across a session
+```
+
 ---
 
 ## The `.harness/` directory
