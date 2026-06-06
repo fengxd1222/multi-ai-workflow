@@ -108,7 +108,7 @@ Your main working tree stays clean the whole time — the change lives only on
 | `harness session start` | Start a session, capture the repo baseline |
 | `harness task create --title <t> [--accept <a,...>] [--budget <n>]` | Create a task |
 | `harness task phase --task <id> --to <phase>` | Advance task phase (CLI-checked legality) |
-| `harness delegate --task <id> --role <r> --runtime <codex\|claude> [--goal <g>] [--allow <g,...>] [--deny <g,...>] [--verify <cmd,...>] [--depth <n>]` | Create a job from a task |
+| `harness delegate --task <id> --role <r> --runtime <codex\|claude> [--goal <g>] [--brief <b>] [--allow <g,...>] [--deny <g,...>] [--constraint <c>] [--context <f>] [--from <jid>] [--verify <cmd>] [--trellis-task <slug>] [--depth <n>]` | Create a job from a task (see [Trellis integration](#trellis-integration) for `--trellis-task`) |
 | `harness run --job <id> [--session <sid>]` | Run a created job to a terminal state |
 | `harness verify --task <id> --cmd <c> [--cmd ...] [--workdir <d>]` | CLI-run task-level verification → `verification.json` |
 | `harness integrate --task <id>` | Merge completed write-job branches → `harness/integration/<id>` |
@@ -164,6 +164,57 @@ orphan worktrees. `recover` is mutually exclusive (recover.lock) and idempotent.
 
 ---
 
+## Trellis integration
+
+harness pairs with [Trellis](https://github.com/mindfold-ai/Trellis): **Trellis owns
+knowledge/specs/journals and task planning; harness is the isolated-execution +
+ground-truth backend** (Trellis no longer ships its own worktree orchestration —
+harness fills exactly that gap). The `.trellis/` directory is shared; there's
+nothing to migrate.
+
+**Consume a Trellis task** — turn a Trellis task into a harness work order:
+
+```bash
+harness delegate --task T-1 --role implementation --runtime claude \
+  --trellis-task 05-12-xterm --allow 'src/**'
+```
+
+harness reads `.trellis/tasks/05-12-xterm/`:
+- `task.json` `title` → job **goal**
+- `prd.md` → job **brief** (requirements + acceptance)
+- `implement.jsonl` → job **context_refs** — the spec + research files the worker
+  Reads *first*, so your team's conventions ground the work instead of the model
+  improvising. (Read-only; pure file reads, no dependency.)
+
+**Auto-link the active task** — if you've already `task.py start`'d a task in
+Trellis, drop `--trellis-task` and harness picks it up via `task.py current`:
+
+```bash
+harness delegate --task T-1 --role implementation --runtime claude --allow 'src/**'
+#  -> auto-linked Trellis active task: 05-12-xterm
+```
+
+**Write-back** (after `harness run`, best-effort via Trellis's own scripts so
+formats never drift):
+- `task.py set-branch <slug> <job-branch>` — records the job branch on the task
+  (only rewrites `task.json`; never git-commits)
+- `add_session.py --title … --summary … --branch … --no-commit` — appends a
+  journal entry (never auto-commits your repo)
+
+Not touched by harness — you drive these in Trellis (`/trellis:finish-work`):
+`task.py start` (needs a Trellis session identity), `finish`, and `archive`
+(review boundary). harness data is stored under `task.json`'s `meta` so it never
+collides with Trellis fields.
+
+**Python interpreter** — write-back calls Trellis's python scripts; the
+interpreter is never hardcoded. Resolution order: `$HARNESS_PYTHON` (may be a
+venv/conda path or multi-word like `conda run -n env python`) → a self-executable
+script via its shebang → `python3`/`python`/`py` on PATH. If none resolve,
+write-back is skipped with a note — the run never fails. No `.trellis/`, no Trellis
+task, or no interpreter all degrade quietly.
+
+---
+
 ## Hooks (optional, advanced)
 
 The runtime path (worker invocation, result extraction) is validated. Wiring the
@@ -203,6 +254,7 @@ internal/adapter       push orchestration: spawn → ground-truth → CAS termin
 internal/guard         PreToolUse path guard + dangerous-command policy + hook I/O
 internal/verify        CLI-run verification
 internal/integrate     integration-worktree merge → delivery branch
+internal/trellis       read co-located Trellis tasks + write-back via its scripts
 internal/cli           subcommand implementations
 schemas/               embedded JSON Schemas + reserved.json (written by `harness init`)
 ```
