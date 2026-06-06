@@ -6,13 +6,36 @@ job runs a real CLI worker in an **isolated git worktree**, and the harness
 verifies, integrates, and hands off the result as a branch — **without ever
 touching your main working tree**.
 
-> Status: v1 feature-complete. 11 internal packages, all tests green, `go vet`
+> Status: v1 feature-complete. 12 internal packages, all tests green, `go vet`
 > clean, `-race` clean, ≥80% coverage per package. Validated end-to-end against
 > real `claude` 2.1.156 and `codex` 0.135.0.
+
+> **Repository layout** — `main` is harness (this project). The previous
+> implementation, the original *multi-ai-workflow* skill, is preserved on the
+> [`legacy`](../../tree/legacy) branch: kept for reference, no longer maintained.
+> The two share no history; harness is a ground-up rewrite.
+
+---
+
+## Contents
+
+[Why](#why) · [Concepts](#concepts) · [How it works](#how-it-works) ·
+[Ground truth](#ground-truth) · [Install](#install) · [Quickstart](#quickstart) ·
+[Commands](#command-reference) · [The `.harness/` directory](#the-harness-directory) ·
+[Trellis](#trellis-integration) · [Hooks](#hooks-optional-advanced) ·
+[Testing](#testing) · [Architecture](#architecture) · [Walkthrough](#visual-walkthrough)
 
 ---
 
 ## Why
+
+**The problem.** Handing a coding task to an autonomous CLI agent is easy; trusting
+the result is not. A worker can write outside the files you meant, claim tests
+passed when they didn't, leave half-finished edits on a crash, or quietly drop
+tool scratch files into your tree. Run two agents at once and they clobber each
+other's changes. harness is the thin layer that makes delegation **safe and
+recoverable** — without becoming a daemon, a database, or a third "brain".
+
 
 Codex and Claude Code both ship mature non-interactive modes (`codex exec`,
 `claude -p`), structured JSON output, sandboxes, and lifecycle hooks. So instead
@@ -34,6 +57,69 @@ that treats both CLIs as interchangeable *runtimes*:
 
 Design docs: [`docs/harness-v1-spec.md`](docs/harness-v1-spec.md) (rev3),
 [`docs/scope-eval.md`](docs/scope-eval.md), [`docs/harness-architecture-opinion.md`](docs/harness-architecture-opinion.md).
+
+---
+
+## Concepts
+
+| Term | What it is |
+|---|---|
+| **orchestrator** | the LLM session (you, or an agent) that drives `harness` commands and decides *what* to do. Proposes; never writes state directly. |
+| **runtime** | the worker CLI that actually does a job — `claude` or `codex`. Interchangeable behind one adapter. |
+| **session** | one harness run-context. Captures a repo baseline; all events live under it. |
+| **task** | a unit of work with acceptance criteria, decomposed into one or more jobs. |
+| **job** | a single delegation to a runtime. *Write* jobs run in an isolated worktree; *read-only* jobs run in the main tree. 5-state machine: `created → running → completed │ failed │ needs-human │ timeout`. |
+| **worktree** | a per-write-job isolated git checkout on branch `job/<id>`. Crash recovery = discard it. |
+| **event log** | append-only, per-actor, the single source of truth. Every JSON view is rebuildable from it. |
+| **ground truth** | what `git diff` + a CLI re-run of the checks actually show — the authority that **overrides** a worker's self-reports. |
+| **gate** | a `needs-human` checkpoint with a concrete resolution (`approve` / `reject` / `reassign`). |
+| **delivery branch** | `harness/integration/<task>` — where results land for *you* to merge. harness never writes your working tree. |
+
+---
+
+## How it works
+
+```
+  task ──delegate──▶ job (created)
+                       │  harness run
+   ┌───────────────────┴──────────────────────────────────────┐
+   │ 1  git worktree add  (branch job/<id>, base = HEAD)        │
+   │ 2  created → running  (CAS; stamp worker pid/boot-id)      │
+   │ 3  spawn runtime (claude/codex) under a wall-clock watchdog│
+   │ 4  worker edits inside the worktree   ── PreToolUse guard ─┤  out-of-scope
+   │ 5  extract result + schema-validate  (one repair retry)    │  write → deny
+   │ 6  CLI commits the changes to job/<id>                     │
+   │ 7  GROUND TRUTH: git diff vs scope  +  CLI re-runs verify  │
+   │ 8  running → completed   │   needs-human (+ gate)          │
+   └───────────────────┬──────────────────────────────────────┘
+   verify (task-level) ─▶ integrate (merge job branches) ─▶ harness/integration/<task>
+                                                              │  handoff.md
+                                                       you review & merge
+        your main working tree:  ░░░ never touched ░░░
+```
+
+A richer, multi-job flow: a read-only **analysis** job surveys the code and writes
+`findings/<jid>.md`; an **implementation** job consumes those findings (so the worker
+is grounded in real conventions, not guessing) and produces the change. See
+[Trellis integration](#trellis-integration) for where that grounding comes from
+automatically.
+
+---
+
+## Ground truth
+
+harness never trusts what a worker *says* it did. After every job the deterministic
+CLI establishes the facts itself:
+
+- **changed files** come from `git diff <base>` — not the worker's `changed_files`
+- **verification** is re-run by the CLI — not the worker's `"verification": "passed"`
+- **usage / tokens** come from the runtime's own accounting (conservatively estimated, and gated, if absent)
+
+This is why the same code handles two very different runtimes safely. *Real example
+from validation:* `codex` drops `.serena/` tool scratch files outside the job's
+scope; `claude` doesn't. The identical `git diff` review caught codex's stray files
+and sent the job to `needs-human` + a gate — instead of smuggling them into the
+delivery branch. The worker's behavior differed; the trust boundary didn't.
 
 ---
 
@@ -187,6 +273,33 @@ orphan worktrees. `recover` is mutually exclusive (recover.lock) and idempotent.
 
 ---
 
+## The `.harness/` directory
+
+`harness init` creates this in your repo root (and adds it to `.gitignore` — it's
+runtime state, not source). Events are the source of truth; everything under
+`views/` is rebuildable from them by `harness recover`.
+
+```
+.harness/
+  workflow-contract.md            # the protocol contract injected at session start
+  reserved.json                   # hard-deny paths (.env, secrets, .git, .harness …)
+  schemas/                        # embedded JSON Schemas, written out for runtimes
+  current/{state.lock,recover.lock}
+  sessions/<sid>/
+    session.json  session-baseline.json     # the repo state captured at start
+    events/<actor>.jsonl          # ← single source of truth (append-only, ULID)
+    views/{jobs,tasks,gates}/     # ← rebuildable projections (CAS revisions)
+    tasks/<tid>/{handoff.md,verification.json}
+    findings/<jid>.md             # analysis-job output, grounding for implement jobs
+    artifacts/<jid>/
+      stdout.log  stderr.log  final.json  process.json  diff.patch
+  .trash/<jid>/                   # rolled-back untracked files (never hard-deleted)
+```
+
+`.worktrees/<jid>/` (also gitignored) holds each write job's isolated checkout.
+
+---
+
 ## Trellis integration
 
 harness pairs with [Trellis](https://github.com/mindfold-ai/Trellis): **Trellis owns
@@ -287,3 +400,22 @@ schemas/               embedded JSON Schemas + reserved.json (written by `harnes
 Autonomous orchestrator loop (CLI is human-driven), Windows, MCP server, cross-repo
 coordination, team mailbox, UI, file leases / shared-write mode (worktree isolation
 replaces them).
+
+---
+
+## Visual walkthrough
+
+Open [`harness-flow.html`](harness-flow.html) in a browser for an animated,
+step-by-step trace of the call order — the full task lifecycle plus the internals
+of `harness run` (worktree → spawn → guard → ground-truth → CAS transition), with
+play / step / reset controls and a live event log.
+
+---
+
+## Project status
+
+v1 is feature-complete and validated end-to-end against real `claude` and `codex`.
+Both runtimes have been driven through the full loop (delegate → run → verify →
+integrate → handoff) with the main working tree never touched. Known boundaries are
+listed in [v1 scope](#v1-scope-intentionally-not-done); the design rationale,
+including three rounds of adversarial review, lives under [`docs/`](docs/).
