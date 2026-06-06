@@ -340,7 +340,7 @@ harness prune              <span class="cm"># 回收终态 job 的 worktree(防�
     <section id="agents">
       <h2><span class="n">06</span>在 Claude Code / Codex 里用</h2>
       <p class="lead">一句话驱动整条闭环(init→task→delegate→run→gate→verify→integrate→handoff)。</p>
-      <div class="code"><pre><span class="cm"># 装 slash command / custom prompt 到用户级</span>
+      <div class="code"><pre><span class="cm"># 装 Claude Code slash command / Codex skill 到用户级</span>
 ./integrations/install-integrations.sh           <span class="cm"># 两者都装</span>
 <span class="cm"># 或: ./integrations/install-integrations.sh claude | codex</span></pre></div>
       <p>然后在你项目的会话里(<code>harness</code> 在 PATH 上):</p>
@@ -352,7 +352,7 @@ harness prune              <span class="cm"># 回收终态 job 的 worktree(防�
       <table>
         <tr><th>agent</th><th>装到</th><th>机制</th></tr>
         <tr><td>Claude Code</td><td><code>~/.claude/commands/harness-delegate.md</code></td><td>slash command + <code>$ARGUMENTS</code></td></tr>
-        <tr><td>Codex</td><td><code>~/.codex/prompts/harness-delegate.md</code></td><td>custom prompt + <code>$ARGUMENTS</code>/<code>$1</code></td></tr>
+        <tr><td>Codex (0.137+)</td><td><code>~/.codex/skills/harness-delegate/SKILL.md</code></td><td>skill + <code>$ARGUMENTS</code>(custom prompts 已废弃)</td></tr>
       </table>
       <p class="d" style="color:var(--dim)">你对话的 agent 当 orchestrator，worker 是你点名的另一个 runtime，跑在隔离 worktree。嵌套可行(Claude Code 编排 <code>claude -p</code> worker，或任一方驱动 <code>codex exec</code>)。</p>
     </section>

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the harness slash command / custom prompt into Claude Code and/or Codex.
+# Install the harness command into Claude Code (slash command) and/or Codex (skill).
 #   ./integrations/install-integrations.sh           # both, user-level
 #   ./integrations/install-integrations.sh claude    # only Claude Code
 #   ./integrations/install-integrations.sh codex     # only Codex
@@ -16,10 +16,11 @@ if [ "$want" = "both" ] || [ "$want" = "claude" ]; then
 fi
 
 if [ "$want" = "both" ] || [ "$want" = "codex" ]; then
-  dest="$HOME/.codex/prompts"
+  # Codex 0.137+ uses skills: ~/.codex/skills/<name>/SKILL.md (custom prompts are deprecated).
+  dest="$HOME/.codex/skills/harness-delegate"
   mkdir -p "$dest"
-  cp codex/prompts/harness-delegate.md "$dest/"
-  echo "✓ Codex: $dest/harness-delegate.md   →  use  /harness-delegate claude <goal>"
+  cp codex/skills/harness-delegate/SKILL.md "$dest/"
+  echo "✓ Codex: $dest/SKILL.md   →  use  /harness-delegate claude <goal>  (or describe the task)"
 fi
 
 echo "done. (harness itself must be on PATH — see install.sh / install-remote.sh)"

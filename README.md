@@ -407,8 +407,9 @@ Then, from a session in your project (where `harness` is on PATH):
 The agent you're talking to becomes the **orchestrator** and drives `harness` via
 shell; the *worker* is whichever runtime you name, running in an isolated worktree.
 Nesting works (Claude Code orchestrating a `claude -p` worker, or either driving
-`codex exec`). Manual installs: Claude Code → `~/.claude/commands/` (or project
-`.claude/commands/`); Codex → `~/.codex/prompts/`.
+`codex exec`). Manual installs: Claude Code → `~/.claude/commands/harness-delegate.md`
+(or project `.claude/commands/`); Codex (0.137+) → `~/.codex/skills/harness-delegate/SKILL.md`
+(a skill — Codex's deprecated custom-prompts dir is not used).
 
 ---
 
