@@ -28,9 +28,9 @@ func (d Decision) String() string {
 
 // ToolCall is the runtime-agnostic view of a tool invocation (rev3 §9/§10).
 type ToolCall struct {
-	Tool string   // Edit / Write / Bash / Read / ...
+	Tool  string   // Edit / Write / Bash / Read / ...
 	Paths []string // target write paths (resolved against workdir)
-	Bash string   // command, when Tool == Bash
+	Bash  string   // command, when Tool == Bash
 }
 
 // Result is a PreToolUse evaluation.

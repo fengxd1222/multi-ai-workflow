@@ -133,11 +133,11 @@ func TestBuildPrompt_RichPacket(t *testing.T) {
 	a := &Adapter{L: store.NewLayout("/repo"), SID: "S-1"}
 	job := model.Job{
 		JobID: "J-1", TaskID: "T-1", Role: model.RoleImplementation, Writes: true, RepoRoot: "/repo",
-		Goal:        "refactor auth",
-		Brief:       "auth lives in src/auth; keep API stable",
-		ContextRefs: []string{".harness/sessions/S-1/findings/J-0.md", "src/auth/service.ts"},
-		Constraints: []string{"do not change error codes", "no new deps"},
-		Scope:       model.Scope{Allowed: []string{"src/auth/**"}, Denied: []string{"package.json"}},
+		Goal:                     "refactor auth",
+		Brief:                    "auth lives in src/auth; keep API stable",
+		ContextRefs:              []string{".harness/sessions/S-1/findings/J-0.md", "src/auth/service.ts"},
+		Constraints:              []string{"do not change error codes", "no new deps"},
+		Scope:                    model.Scope{Allowed: []string{"src/auth/**"}, Denied: []string{"package.json"}},
 		VerificationRequirements: []string{"npm test -- auth"},
 	}
 	p := a.buildPrompt(job, "/repo/.worktrees/J-1")

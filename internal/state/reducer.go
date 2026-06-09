@@ -18,11 +18,11 @@ type State struct {
 // The optional worker/worktree fields let created->running also stamp the
 // runtime identity and worktree binding in a single event (rev3 §8 step 4).
 type statusChange struct {
-	JobID      string        `json:"job_id,omitempty"`
-	TaskID     string        `json:"task_id,omitempty"`
-	From       string        `json:"from"`
-	To         string        `json:"to"`
-	Reason     string        `json:"reason,omitempty"`
+	JobID        string        `json:"job_id,omitempty"`
+	TaskID       string        `json:"task_id,omitempty"`
+	From         string        `json:"from"`
+	To           string        `json:"to"`
+	Reason       string        `json:"reason,omitempty"`
 	Worker       *model.Worker `json:"worker,omitempty"`
 	Workdir      string        `json:"workdir,omitempty"`
 	Branch       string        `json:"branch,omitempty"`

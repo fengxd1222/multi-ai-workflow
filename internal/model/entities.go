@@ -86,32 +86,32 @@ type Completion struct {
 
 // Job — schemas/job.schema.json.
 type Job struct {
-	JobID                    string      `json:"job_id"`
-	TaskID                   string      `json:"task_id"`
-	Rev                      int         `json:"rev"`
-	CreatedBy                string      `json:"created_by"`
-	TargetRuntime            string      `json:"target_runtime"`
-	Role                     string      `json:"role"`
-	Goal                     string      `json:"goal,omitempty"`
-	TrellisTask              string      `json:"trellis_task,omitempty"` // co-located Trellis task slug, for write-back
-	Writes                   bool        `json:"writes"`
-	Status                   string      `json:"status"`
-	Mode                     string      `json:"mode"`
-	StateRoot                string      `json:"state_root"`
-	RepoRoot                 string      `json:"repo_root"`
-	Workdir                  string      `json:"workdir"`
-	Branch                   *string     `json:"branch"`
-	BaseCommit               *string     `json:"base_commit"`
-	Worker                   *Worker     `json:"worker,omitempty"`
-	Scope                    Scope       `json:"scope"`
-	Brief                    string      `json:"brief,omitempty"`
-	Constraints              []string    `json:"constraints,omitempty"`
-	ContextRefs              []string    `json:"context_refs,omitempty"` // repo-relative files the worker must Read first
-	VerificationRequirements []string    `json:"verification_requirements,omitempty"`
-	Delegation               Delegation  `json:"delegation"`
-	Budget                   JobBudget   `json:"budget"`
-	RecoverCount             int         `json:"recover_count"`
-	ResultContract           string      `json:"result_contract"`
+	JobID                    string     `json:"job_id"`
+	TaskID                   string     `json:"task_id"`
+	Rev                      int        `json:"rev"`
+	CreatedBy                string     `json:"created_by"`
+	TargetRuntime            string     `json:"target_runtime"`
+	Role                     string     `json:"role"`
+	Goal                     string     `json:"goal,omitempty"`
+	TrellisTask              string     `json:"trellis_task,omitempty"` // co-located Trellis task slug, for write-back
+	Writes                   bool       `json:"writes"`
+	Status                   string     `json:"status"`
+	Mode                     string     `json:"mode"`
+	StateRoot                string     `json:"state_root"`
+	RepoRoot                 string     `json:"repo_root"`
+	Workdir                  string     `json:"workdir"`
+	Branch                   *string    `json:"branch"`
+	BaseCommit               *string    `json:"base_commit"`
+	Worker                   *Worker    `json:"worker,omitempty"`
+	Scope                    Scope      `json:"scope"`
+	Brief                    string     `json:"brief,omitempty"`
+	Constraints              []string   `json:"constraints,omitempty"`
+	ContextRefs              []string   `json:"context_refs,omitempty"` // repo-relative files the worker must Read first
+	VerificationRequirements []string   `json:"verification_requirements,omitempty"`
+	Delegation               Delegation `json:"delegation"`
+	Budget                   JobBudget  `json:"budget"`
+	RecoverCount             int        `json:"recover_count"`
+	ResultContract           string     `json:"result_contract"`
 }
 
 type Worker struct {

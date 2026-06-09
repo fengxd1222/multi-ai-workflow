@@ -26,9 +26,9 @@ type JobBranch struct {
 type Result struct {
 	IntegrationBranch string
 	Merged            []string
-	DeniedJob         string          // job rejected pre-merge for out-of-scope changes
+	DeniedJob         string // job rejected pre-merge for out-of-scope changes
 	DeniedPaths       []scope.Verdict
-	ConflictJob       string          // job whose merge conflicted (then aborted)
+	ConflictJob       string // job whose merge conflicted (then aborted)
 }
 
 // OK reports a fully successful integration.

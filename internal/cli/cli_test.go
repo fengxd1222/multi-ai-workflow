@@ -145,9 +145,9 @@ func TestRecover_RebuildsViews(t *testing.T) {
 		JobID: "J-1", TaskID: "T-1", CreatedBy: "codex", TargetRuntime: model.RuntimeClaude,
 		Role: model.RoleImplementation, Writes: true, Mode: model.ModeWorktree,
 		StateRoot: l.StateRoot, RepoRoot: l.RepoRoot, Workdir: "/x",
-		Scope: model.Scope{Allowed: []string{"src/**"}, Denied: []string{}},
+		Scope:      model.Scope{Allowed: []string{"src/**"}, Denied: []string{}},
 		Delegation: model.Delegation{Depth: 1, ChainFingerprints: []string{"T-1:x"}},
-		Budget: model.JobBudget{MaxTokens: 1, TimeoutS: 1}, ResultContract: "job-result.schema.json",
+		Budget:     model.JobBudget{MaxTokens: 1, TimeoutS: 1}, ResultContract: "job-result.schema.json",
 	}
 	if err := eng.CreateJob("codex", j); err != nil {
 		t.Fatal(err)
