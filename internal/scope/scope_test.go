@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/fengxd1222/multi-ai-workflow/internal/model"
@@ -85,11 +86,14 @@ func TestNormalize_RejectsEscapeAndSymlink(t *testing.T) {
 		t.Fatalf("want escapes-base-root, got %v", err)
 	}
 
-	// case 6: symlink in path
-	must(t, os.Symlink("/etc", filepath.Join(base, "evil")))
-	_, err = Normalize("evil/passwd", base)
-	if !errors.As(err, &re) || re.Reason != "symlink-in-path" {
-		t.Fatalf("want symlink-in-path, got %v", err)
+	// case 6: symlink in path. Unix-shaped: targets /etc and relies on POSIX
+	// symlink semantics; Windows reparse-point escape needs its own coverage.
+	if runtime.GOOS != "windows" {
+		must(t, os.Symlink("/etc", filepath.Join(base, "evil")))
+		_, err = Normalize("evil/passwd", base)
+		if !errors.As(err, &re) || re.Reason != "symlink-in-path" {
+			t.Fatalf("want symlink-in-path, got %v", err)
+		}
 	}
 }
 
@@ -97,6 +101,9 @@ func TestNormalize_RejectsEscapeAndSymlink(t *testing.T) {
 // case: the base is canonical but a tool reports the path via a symlinked
 // prefix. resolvePrefix must canonicalize it instead of falsely rejecting.
 func TestNormalize_SystemSymlinkPrefix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("reproduces the macOS /var -> /private/var symlinked-prefix case; no Windows equivalent")
+	}
 	real := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(real, link); err != nil {

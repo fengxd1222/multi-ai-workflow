@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -67,17 +68,20 @@ func TestEvaluatePreTool_WritePaths(t *testing.T) {
 		}
 	}
 	check("Write", "src/auth/x.ts", Allow)
-	check("Write", "package.json", Deny)  // denied
-	check("Write", ".env", Deny)          // reserved
+	check("Write", "package.json", Deny)   // denied
+	check("Write", ".env", Deny)           // reserved
 	check("Write", "docs/readme.md", Gate) // default-deny
 
-	// symlink escape -> deny
-	if err := os.Symlink("/etc", filepath.Join(wd, "evil")); err != nil {
-		t.Fatal(err)
-	}
-	r := EvaluatePreTool(ToolCall{Tool: "Write", Paths: []string{"evil/passwd"}}, wd, sc, rsv, false)
-	if r.Decision != Deny {
-		t.Errorf("symlink path should deny, got %s", r.Decision)
+	// symlink escape -> deny. Unix-shaped (POSIX symlink to /etc); the portable
+	// allow/deny/reserved/default-deny checks above still run on Windows.
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink("/etc", filepath.Join(wd, "evil")); err != nil {
+			t.Fatal(err)
+		}
+		r := EvaluatePreTool(ToolCall{Tool: "Write", Paths: []string{"evil/passwd"}}, wd, sc, rsv, false)
+		if r.Decision != Deny {
+			t.Errorf("symlink path should deny, got %s", r.Decision)
+		}
 	}
 }
 

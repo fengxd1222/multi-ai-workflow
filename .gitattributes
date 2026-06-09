@@ -1,0 +1,12 @@
+# Normalize line endings to LF on checkout across all platforms. Without this,
+# git's autocrlf on Windows can rewrite checked-out files to CRLF and break
+# tests that compare file contents or parse git output. The repo is authored in
+# LF, so this introduces no churn.
+* text=auto eol=lf
+
+# Scripts and Go sources must stay LF regardless of platform.
+*.go    text eol=lf
+*.sh    text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.html  text eol=lf

@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/fengxd1222/multi-ai-workflow/internal/model"
@@ -14,6 +15,9 @@ import (
 // best-effort add_session.py call after run. We stub the script (self-executable
 // sh) to drop a marker file and assert it was invoked with the journal args.
 func TestRun_TrellisJournalWriteBack(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stub uses a #!/bin/sh shebang for self-exec; Windows does not honor shebangs")
+	}
 	dir, sid, root := initSessionWithCommit(t)
 
 	// stub Trellis: a task + a fake add_session.py that records its invocation

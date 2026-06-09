@@ -1,3 +1,10 @@
+//go:build !windows
+
+// These tests stub Trellis scripts with #!/bin/sh and exercise the Unix
+// shebang+exec-bit interpreter-resolution path. The Windows interpreter path
+// (py/python launcher) is used in real Trellis runs but needs its own coverage;
+// the portable Trellis behavior (Detect/LoadTask) is tested in trellis_test.go.
+
 package trellis
 
 import (
