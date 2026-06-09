@@ -42,7 +42,14 @@ func AppendRaw(l store.Layout, sid string, ev model.Event) error {
 	if _, err := f.Write(line); err != nil { // single write() call
 		return err
 	}
-	return f.Sync()
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	// Durably link a newly-created actor file into events/. Mirror the dir-fsync
+	// discipline of store.WriteAtomic: without this, a power-loss after the data
+	// fsync can lose the directory entry of a just-created actor file — and with
+	// it the just-appended event, the single source of truth (N12 companion).
+	return store.FsyncDir(l.Events(sid))
 }
 
 // Fold reads every events/<actor>.jsonl in the session, tolerates a torn final

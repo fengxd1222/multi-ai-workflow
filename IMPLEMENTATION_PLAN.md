@@ -155,3 +155,21 @@ M1–M6 全部 Complete。11 个 internal 包全部测试绿、覆盖率 ≥80%�
 - M4: hooks(path guard/迁移点 diff review/task-stop 拆分) + 危险命令硬 deny + 注入隔离。
 - M5: verify 分层(CLI 实跑) + integrate(集成 worktree merge+abort → harness/integration 分支) + handoff + gate。
 - M6: recover 全套(孤儿扫描/prune/branch -D/熔断) + 委派深度·环路·budget。
+
+---
+
+## M7: Windows 可移植性 + 两个真 bug(进行中)
+
+> 起因:`GOOS=windows go build ./...` 编译不过(`store/lock.go` flock、`runtime/exec.go`
+> Setpgid/Kill、`cli/live.go` kill(pid,0) 三处 Unix-only syscall 无 build tag)。
+> 决策:三组拆 `_unix.go`/`_windows.go`,Windows 侧 `syscall.NewLazyDLL("kernel32.dll")`
+> 直调,**零新增外部依赖**(不引 golang.org/x/sys)。另修审计确认的两个真 bug。
+
+- [x] Stage 1 事件追加补父目录 fsync:导出 `store.FsyncDir`,`event/log.go` 调用(medium 真 bug)。
+- [x] Stage 2 锁拆分:`lock.go`(共享)+ `lock_unix.go`(flock)+ `lock_windows.go`(LockFileEx)。
+- [x] Stage 3 看门狗拆分:`exec.go` 共享 + `setProcessGroup`/`killProcessGroup` per-OS(unix SIGKILL 进程组 / windows taskkill /F /T)。
+- [x] Stage 4 存活探测拆分:`live.go` 共享 + `pidLiveCheck` per-OS(unix kill0 / windows OpenProcess+GetExitCodeProcess)。
+- [x] Stage 5 boot-id 可移植:移入 `bootid_unix.go`(boot_id→/proc/stat btime→sysctl)/`bootid_windows.go`(GetTickCount64 推导),修 low 真 bug(Windows 上守卫不再静默失效)。
+- [x] Stage 6 验证:gofmt/vet/test(darwin -race)全绿 + windows/linux/darwin × amd64/arm64 交叉编译均通过;新增 portable_test.go 锁定 bootID/processAlive 不变量。
+
+**结果**:`GOOS=windows go build ./...` 从「编译不过」→ 全平台通过,零新增外部依赖。两个真 bug(事件 dir-fsync、boot-id 退化)已修。

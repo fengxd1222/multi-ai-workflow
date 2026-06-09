@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"os/exec"
-	"syscall"
 )
 
 // procResult is the raw process-layer outcome.
@@ -22,7 +21,7 @@ type procResult struct {
 func runProcess(ctx context.Context, dir, name string, args []string) procResult {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setProcessGroup(cmd) // isolate the child in its own group/tree (platform-specific)
 	// Explicit empty stdin: codex/claude otherwise block on "Reading additional
 	// input from stdin..." instead of getting an immediate EOF (calibrated
 	// against codex-cli 0.135.0).
@@ -42,7 +41,7 @@ func runProcess(ctx context.Context, dir, name string, args []string) procResult
 	select {
 	case <-ctx.Done():
 		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) // negative pid = process group
+			killProcessGroup(cmd) // kill the whole group/tree (platform-specific)
 		}
 		killed = true
 		<-done // reap

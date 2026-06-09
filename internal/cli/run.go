@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
-	"strings"
 
 	"github.com/fengxd1222/multi-ai-workflow/internal/adapter"
 	"github.com/fengxd1222/multi-ai-workflow/internal/model"
@@ -109,16 +107,4 @@ func runtimeFor(target string) (runtime.Runtime, error) {
 	default:
 		return nil, coded(ExitUsage, "unknown target runtime %q", target)
 	}
-}
-
-// bootID returns a host-boot identifier used to detect pid reuse across reboots
-// (rev3 N1/N5). Best-effort; empty if unavailable.
-func bootID() string {
-	if b, err := os.ReadFile("/proc/sys/kernel/random/boot_id"); err == nil {
-		return strings.TrimSpace(string(b))
-	}
-	if out, err := exec.Command("sysctl", "-n", "kern.boottime").Output(); err == nil {
-		return strings.TrimSpace(string(out))
-	}
-	return ""
 }

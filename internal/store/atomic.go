@@ -41,7 +41,7 @@ func WriteAtomic(path string, data []byte, perm os.FileMode) error {
 	if err := os.Rename(tmpName, path); err != nil {
 		return err
 	}
-	return fsyncDir(dir)
+	return FsyncDir(dir)
 }
 
 // WriteAtomicJSON marshals v (indented) and writes it atomically.
@@ -63,13 +63,16 @@ func ReadJSON(path string, v any) error {
 	return json.Unmarshal(data, v)
 }
 
-func fsyncDir(dir string) error {
+// FsyncDir flushes a directory's metadata (the entries linking newly-created
+// files into it) so a crash cannot lose a file that was just created+fsync'd.
+// Directory fsync is unsupported on some platforms (e.g. Windows); such errors
+// are treated as best-effort no-ops.
+func FsyncDir(dir string) error {
 	d, err := os.Open(dir)
 	if err != nil {
 		return err
 	}
 	defer d.Close()
-	// Directory fsync is unsupported on some platforms; ignore EINVAL-style errors.
 	if err := d.Sync(); err != nil {
 		return nil //nolint:nilerr // dir fsync best-effort
 	}

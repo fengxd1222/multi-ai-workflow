@@ -1,17 +1,27 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
-// FileLock is an advisory flock(2) held for the duration of a critical section.
-// state.lock serializes all state-transition commits; recover.lock makes
-// `harness recover` mutually exclusive (rev3 §4, §15, fixes N6).
+// FileLock is an advisory whole-file lock held for the duration of a critical
+// section. state.lock serializes all state-transition commits; recover.lock
+// makes `harness recover` mutually exclusive (rev3 §4, §15, fixes N6). The
+// lock is released when the underlying handle is closed — including on process
+// death — so a crash never strands the lock.
+//
+// The OS primitive is platform-specific: flock(2) on Unix (lock_unix.go),
+// LockFileEx on Windows (lock_windows.go). This file holds the shared,
+// OS-independent lifecycle; the platform files supply lockFile/unlockFile.
 type FileLock struct {
 	f *os.File
 }
+
+// errWouldBlock is returned by lockFile when a non-blocking lock attempt finds
+// the lock already held by someone else.
+var errWouldBlock = errors.New("lock would block")
 
 // AcquireLock blocks until it holds an exclusive lock on path.
 func AcquireLock(path string) (*FileLock, error) {
@@ -19,7 +29,7 @@ func AcquireLock(path string) (*FileLock, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := lockFile(f, false); err != nil {
 		f.Close()
 		return nil, err
 	}
@@ -33,9 +43,9 @@ func TryLock(path string) (lock *FileLock, ok bool, err error) {
 	if err != nil {
 		return nil, false, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := lockFile(f, true); err != nil {
 		f.Close()
-		if err == syscall.EWOULDBLOCK {
+		if errors.Is(err, errWouldBlock) {
 			return nil, false, nil
 		}
 		return nil, false, err
@@ -48,7 +58,7 @@ func (l *FileLock) Release() error {
 	if l == nil || l.f == nil {
 		return nil
 	}
-	_ = syscall.Flock(int(l.f.Fd()), syscall.LOCK_UN)
+	_ = unlockFile(l.f)
 	err := l.f.Close()
 	l.f = nil
 	return err
